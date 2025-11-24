@@ -1,10 +1,8 @@
 name: Synthwave Docker Build
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  release:
+    types: [created, published]
 
 jobs:
   build:
@@ -14,8 +12,15 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build the Main Docker image
       run: |
-        docker build . --tag ghcr.io/pranavverma-droid/synthwave:latest
+        docker build . --tag ghcr.io/pranavverma-droid/synthwave:${{ github.event.release.tag_name }}
+        if [ "${{ github.event.release.prerelease }}" == "false" ]; then
+          docker tag ghcr.io/pranavverma-droid/synthwave:${{ github.event.release.tag_name }} ghcr.io/pranavverma-droid/synthwave:latest
+        fi
     - name: Login to GitHub Container Registry
       run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u PranavVerma-droid --password-stdin
     - name: Push the Docker image
-      run: docker push ghcr.io/pranavverma-droid/synthwave:latest
+      run: |
+        docker push ghcr.io/pranavverma-droid/synthwave:${{ github.event.release.tag_name }}
+        if [ "${{ github.event.release.prerelease }}" == "false" ]; then
+          docker push ghcr.io/pranavverma-droid/synthwave:latest
+        fi
