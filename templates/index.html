@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthwave - YouTube Music Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>🎵 Synthwave</h1>
+                <p class="subtitle">Music Downloader</p>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#config" class="nav-item" onclick="scrollToSection('config')">
+                    <span class="nav-icon">⚙️</span>
+                    <span>Configuration</span>
+                </a>
+                <a href="#playlists" class="nav-item" onclick="scrollToSection('playlists')">
+                    <span class="nav-icon">📋</span>
+                    <span>Playlists</span>
+                </a>
+                <a href="#download" class="nav-item" onclick="scrollToSection('download')">
+                    <span class="nav-icon">⬇️</span>
+                    <span>Download</span>
+                </a>
+                <a href="#logs" class="nav-item" onclick="scrollToSection('logs')">
+                    <span class="nav-icon">📜</span>
+                    <span>Logs</span>
+                </a>
+                <a href="#automation" class="nav-item" onclick="scrollToSection('automation')">
+                    <span class="nav-icon">⏰</span>
+                    <span>Automation</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header>
+                <h1>Synthwave</h1>
+            </header>
+
+            <div class="content-wrapper">
+                <!-- Configuration Section -->
+                <section id="config">
+                    <div class="section-header">
+                        <h2><span>⚙️</span> Configuration</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="config-grid">
+                            <div class="config-item">
+                                <label for="base_folder">Base Folder</label>
+                                <input type="text" id="base_folder" class="config-input" 
+                                       value="{{ config.BASE_FOLDER }}" 
+                                       placeholder="/data/songs/All Songs">
+                            </div>
+                            <div class="config-item">
+                                <label for="downloader_path">Downloader Path</label>
+                                <input type="text" id="downloader_path" class="config-input" 
+                                       value="{{ config.DOWNLOADER_PATH }}" 
+                                       placeholder="/data/songs/Binary/downloader">
+                            </div>
+                            <div class="config-item">
+                                <label for="playlist_m3u_folder">Playlist M3U Folder</label>
+                                <input type="text" id="playlist_m3u_folder" class="config-input" 
+                                       value="{{ config.PLAYLIST_M3U_FOLDER }}" 
+                                       placeholder="/data/songs/Playlists/1">
+                            </div>
+                            <div class="config-item">
+                                <label for="music_mount_path">Music Mount Path</label>
+                                <input type="text" id="music_mount_path" class="config-input" 
+                                       value="{{ config.MUSIC_MOUNT_PATH }}" 
+                                       placeholder="/music">
+                            </div>
+                            <div class="config-item">
+                                <label for="parallel_limit">Parallel Download Limit</label>
+                                <input type="number" id="parallel_limit" class="config-input" 
+                                       value="{{ config.PARALLEL_LIMIT }}" 
+                                       min="1" max="10">
+                            </div>
+                            <div class="config-item">
+                                <label for="record_file_name">Record File Name</label>
+                                <input type="text" id="record_file_name" class="config-input" 
+                                       value="{{ config.RECORD_FILE_NAME }}" 
+                                       placeholder=".downloaded_videos.txt">
+                            </div>
+                        </div>
+                        <div style="text-align: right; margin-top: 1.5rem;">
+                            <button onclick="saveConfig()" class="btn btn-primary">
+                                💾 Save Configuration
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Playlists Section -->
+                <section id="playlists">
+                    <div class="section-header">
+                        <h2><span>📋</span> Playlist Management</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="add-playlist">
+                            <input type="text" 
+                                   id="new_playlist_url" 
+                                   class="playlist-input" 
+                                   placeholder="Enter YouTube playlist or album URL...">
+                            <button onclick="addPlaylist()" class="btn btn-primary">
+                                ➕ Add Playlist
+                            </button>
+                        </div>
+                        <div id="playlists-container">
+                            <p style="text-align: center; color: #888; padding: 20px;">
+                                Loading playlists...
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Download Section -->
+                <section id="download">
+                    <div class="section-header">
+                        <h2><span>⬇️</span> Download Control</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="download-controls">
+                            <button id="start-btn" onclick="startDownload()" class="btn btn-primary btn-large">
+                                🚀 Start Download
+                            </button>
+                            <div class="download-info">
+                                <p>💡 Downloads will process all configured playlists and albums</p>
+                                <p>📊 Progress and status will be shown below in real-time</p>
+                            </div>
+                        </div>
+
+                        <div id="progress-section" class="progress-section" style="display: none;">
+                            <h3>Download Progress</h3>
+                            <div class="progress-info">
+                                <p>
+                                    <strong>Current Playlist:</strong>
+                                    <span id="current-playlist"></span>
+                                </p>
+                                <p>
+                                    <strong>Current Song:</strong>
+                                    <span id="current-song"></span>
+                                </p>
+                                <p>
+                                    <strong>Progress:</strong>
+                                    <span>
+                                        <span id="progress-current">0</span> / 
+                                        <span id="progress-total">0</span> songs
+                                    </span>
+                                </p>
+                            </div>
+                            <div class="progress-bar-container">
+                                <div id="progress-bar" class="progress-bar" style="width: 0%;">
+                                    <span id="progress-text">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Logs Section -->
+                <section id="logs">
+                    <div class="section-header">
+                        <h2><span>📜</span> Download Logs</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="logs-controls">
+                            <button id="autoscroll-btn" onclick="toggleAutoScroll()" class="btn btn-secondary btn-sm">
+                                📜 Auto-scroll: ON
+                            </button>
+                            <button onclick="clearLogs()" class="btn btn-secondary btn-sm">
+                                🗑️ Clear Logs
+                            </button>
+                            <button onclick="exportLogs()" class="btn btn-accent btn-sm">
+                                📥 Export Logs
+                            </button>
+                        </div>
+                        <div id="logs-container" class="logs-container">
+                            <div class="log-entry log-info">
+                                <span class="log-timestamp">[{{ status.logs[-1].timestamp if status.logs else 'Ready' }}]</span>
+                                <span class="log-message">System ready. Waiting for download commands...</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Automation Section -->
+                <section id="automation">
+                    <div class="section-header">
+                        <h2><span>⏰</span> Automated Scheduling</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="cron-section">
+                            <div class="cron-header">
+                                <h3>Schedule Automatic Downloads</h3>
+                                <div class="cron-toggle">
+                                    <span id="cron-status-text">Disabled</span>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="cron-enabled" onchange="toggleCron()">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="cron-settings" style="display: none;">
+                                <div class="cron-schedule-grid">
+                                    <div class="config-item">
+                                        <label for="cron-minute">Minute</label>
+                                        <input type="text" id="cron-minute" class="config-input" 
+                                               value="0" placeholder="0-59 or *">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="cron-hour">Hour</label>
+                                        <input type="text" id="cron-hour" class="config-input" 
+                                               value="2" placeholder="0-23 or *">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="cron-day">Day</label>
+                                        <input type="text" id="cron-day" class="config-input" 
+                                               value="*" placeholder="1-31 or *">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="cron-month">Month</label>
+                                        <input type="text" id="cron-month" class="config-input" 
+                                               value="*" placeholder="1-12 or *">
+                                    </div>
+                                    <div class="config-item">
+                                        <label for="cron-day-of-week">Day of Week</label>
+                                        <input type="text" id="cron-day-of-week" class="config-input" 
+                                               value="*" placeholder="0-6 or *">
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap;">
+                                    <button onclick="saveCronSchedule()" class="btn btn-success">
+                                        💾 Update Schedule
+                                    </button>
+                                    <button onclick="showCronPresets()" class="btn btn-secondary">
+                                        📅 Quick Presets
+                                    </button>
+                                </div>
+
+                                <div class="cron-info">
+                                    <p>
+                                        <strong>Schedule Status:</strong>
+                                        <span id="cron-schedule-status" class="time-value">Not scheduled</span>
+                                    </p>
+                                    <p>
+                                        <strong>Next Run:</strong>
+                                        <span id="next-run-time" class="time-value">-</span>
+                                    </p>
+                                    <p>
+                                        <strong>Last Run:</strong>
+                                        <span id="last-run-time" class="time-value">-</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <footer>
+                <p class="footer-brand">Synthwave &copy; 2025</p>
+                <p class="footer-attribution">
+                    Made with ❤️ by 
+                    <a href="https://github.com/PranavVerma-droid" target="_blank" rel="noopener noreferrer">
+                        PranavVerma-droid
+                    </a>
+                </p>
+                <p>
+                    <a href="https://github.com/PranavVerma-droid/Synthwave" target="_blank" rel="noopener noreferrer">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle;">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        View on GitHub
+                    </a>
+                </p>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Cron Presets Modal -->
+    <div id="cron-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Quick Schedule Presets</h3>
+            <div class="preset-grid">
+                <button onclick="applyCronPreset('0', '2', '*', '*', '*')" class="btn btn-secondary">
+                    🌙 Daily at 2 AM
+                </button>
+                <button onclick="applyCronPreset('0', '3', '*', '*', '0')" class="btn btn-secondary">
+                    📅 Weekly (Sunday 3 AM)
+                </button>
+                <button onclick="applyCronPreset('0', '4', '1', '*', '*')" class="btn btn-secondary">
+                    📆 Monthly (1st at 4 AM)
+                </button>
+                <button onclick="applyCronPreset('0', '*/6', '*', '*', '*')" class="btn btn-secondary">
+                    ⏰ Every 6 Hours
+                </button>
+                <button onclick="applyCronPreset('0', '*/12', '*', '*', '*')" class="btn btn-secondary">
+                    ⏱️ Every 12 Hours
+                </button>
+                <button onclick="applyCronPreset('0', '1', '*', '*', '1-5')" class="btn btn-secondary">
+                    💼 Weekdays at 1 AM
+                </button>
+            </div>
+            <div style="text-align: right; margin-top: 1.5rem;">
+                <button onclick="closeCronModal()" class="btn btn-secondary">
+                    ✖️ Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // Smooth scroll navigation
+        function scrollToSection(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // Update active nav item
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                event.target.closest('.nav-item').classList.add('active');
+            }
+        }
+    </script>
+</body>
+</html>
