@@ -1,47 +1,48 @@
 /* Professional Self-Hosted Service Design System */
 :root {
     /* Primary Brand Colors */
-    --brand-primary: #2563eb;
-    --brand-secondary: #7c3aed;
-    --brand-accent: #06b6d4;
+    --brand-primary: #1a73e8;
+    --brand-secondary: #ea4335;
+    --brand-accent: #34a853;
+    --brand-yellow: #fbbc04;
     
-    /* Neutral Palette */
+    /* Neutral Palette - Material Grey */
     --neutral-50: #fafafa;
     --neutral-100: #f5f5f5;
-    --neutral-200: #e5e5e5;
-    --neutral-300: #d4d4d4;
-    --neutral-400: #a3a3a3;
-    --neutral-500: #737373;
-    --neutral-600: #525252;
-    --neutral-700: #404040;
-    --neutral-800: #262626;
-    --neutral-900: #171717;
+    --neutral-200: #eeeeee;
+    --neutral-300: #e0e0e0;
+    --neutral-400: #bdbdbd;
+    --neutral-500: #9e9e9e;
+    --neutral-600: #757575;
+    --neutral-700: #616161;
+    --neutral-800: #424242;
+    --neutral-900: #212121;
     
-    /* Semantic Colors */
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --error: #ef4444;
-    --info: #3b82f6;
+    /* Semantic Colors - Google Material */
+    --success: #34a853;
+    --warning: #fbbc04;
+    --error: #ea4335;
+    --info: #1a73e8;
     
     /* Background & Surfaces */
     --bg-primary: #ffffff;
-    --bg-secondary: #f8fafc;
-    --bg-tertiary: #f1f5f9;
-    --sidebar-bg: #0f172a;
-    --sidebar-hover: #1e293b;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #f1f3f4;
+    --sidebar-bg: #202124;
+    --sidebar-hover: #292a2d;
     
     /* Borders & Dividers */
-    --border-color: #e2e8f0;
-    --divider-color: #cbd5e1;
+    --border-color: #dadce0;
+    --divider-color: #e8eaed;
     
     /* Typography */
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', monospace;
     
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    /* Shadows - Google Material Elevation */
+    --shadow-sm: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    --shadow-md: 0 1px 3px 0 rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+    --shadow-lg: 0 2px 6px 2px rgba(60, 64, 67, 0.3), 0 8px 16px 6px rgba(60, 64, 67, 0.15);
     
     /* Transitions */
     --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -96,7 +97,7 @@ body {
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 0.25rem;
-    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+    background: linear-gradient(135deg, #4285f4 0%, #ea4335 50%, #fbbc04 75%, #34a853 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.02em;
@@ -245,7 +246,7 @@ section {
 .config-input:focus {
     outline: none;
     border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
 }
 
 /* Cron Schedule */
@@ -372,7 +373,7 @@ input:checked + .toggle-slider:before {
 .playlist-input:focus {
     outline: none;
     border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
 }
 
 #playlists-container {
@@ -454,7 +455,7 @@ input:checked + .toggle-slider:before {
 }
 
 .btn-primary:hover {
-    background: #1d4ed8;
+    background: #1557b0;
 }
 
 .btn-success {
@@ -463,7 +464,7 @@ input:checked + .toggle-slider:before {
 }
 
 .btn-success:hover {
-    background: #16a34a;
+    background: #2d8e47;
 }
 
 .btn-danger {
@@ -472,7 +473,7 @@ input:checked + .toggle-slider:before {
 }
 
 .btn-danger:hover {
-    background: #dc2626;
+    background: #d33426;
 }
 
 .btn-secondary {
@@ -490,7 +491,7 @@ input:checked + .toggle-slider:before {
 }
 
 .btn-accent:hover {
-    background: #0891b2;
+    background: #2d8e47;
 }
 
 .btn-sm {
@@ -635,7 +636,7 @@ input:checked + .toggle-slider:before {
 }
 
 .log-info .log-message {
-    color: #60a5fa;
+    color: #8ab4f8;
 }
 
 .log-success .log-message {
