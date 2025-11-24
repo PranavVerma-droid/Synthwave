@@ -1,0 +1,21 @@
+name: Synthwave Docker Build
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Main Docker image
+      run: |
+        docker build . --tag ghcr.io/pranavverma-droid/synthwave:latest
+    - name: Login to GitHub Container Registry
+      run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u PranavVerma-droid --password-stdin
+    - name: Push the Docker image
+      run: docker push ghcr.io/pranavverma-droid/synthwave:latest
