@@ -22,6 +22,7 @@ A self-hosted YouTube Music playlist downloader with a modern web interface, aut
 ```bash
 git clone https://github.com/PranavVerma-droid/Synthwave.git
 cd Synthwave/docker
+cp .env.example .env
 
 docker compose up -d
 ```

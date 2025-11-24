@@ -376,11 +376,11 @@ async function loadCronSettings() {
         }
         
         if (data.next_run) {
-            document.getElementById('next-run-time').textContent = data.next_run;
+            document.getElementById('next-run-time').textContent = formatCronDate(data.next_run);
         }
         
         if (data.last_run) {
-            document.getElementById('last-run-time').textContent = data.last_run;
+            document.getElementById('last-run-time').textContent = formatCronDate(data.last_run);
         }
         
         updateCronUI();
@@ -504,6 +504,44 @@ function applyCronPreset(minute, hour, day, month, dayOfWeek) {
 }
 
 // Utility Functions
+function formatCronDate(dateString) {
+    if (!dateString || dateString === 'Never' || dateString === 'Not scheduled') {
+        return dateString;
+    }
+    
+    try {
+        const date = new Date(dateString);
+        
+        // Get day with ordinal suffix
+        const day = date.getDate();
+        const suffix = ['th', 'st', 'nd', 'rd'];
+        const v = day % 100;
+        const ordinal = day + (suffix[(v - 20) % 10] || suffix[v] || suffix[0]);
+        
+        // Get month name
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = months[date.getMonth()];
+        
+        // Get year
+        const year = date.getFullYear();
+        
+        // Get hour with AM/PM
+        let hours = date.getHours();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // 0 should be 12
+        
+        // Get minutes
+        const minutes = date.getMinutes();
+        const minuteStr = minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : '';
+        
+        return `${ordinal} ${month} ${year} ${hours}${minuteStr}${ampm}`;
+    } catch (e) {
+        return dateString;
+    }
+}
+
 function escapeHtml(text) {
     const map = {
         '&': '&amp;',
