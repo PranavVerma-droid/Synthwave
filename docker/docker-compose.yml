@@ -1,8 +1,6 @@
 services:
   synthwave:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/pranavverma-droid/synthwave:latest
     container_name: synthwave
     restart: unless-stopped
     ports:
@@ -21,7 +19,3 @@ services:
 networks:
   synthwave-network:
     driver: bridge
-
-volumes:
-  songs:
-  playlists:
