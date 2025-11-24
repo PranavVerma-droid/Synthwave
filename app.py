@@ -35,11 +35,11 @@ scheduler.start()
 SCRIPT_DIR = Path(__file__).parent.absolute()
 CONFIG_FILE = SCRIPT_DIR / "config.json"
 DEFAULT_CONFIG = {
-    "BASE_FOLDER": "/data/songs/All Songs",
-    "DOWNLOADER_PATH": "/data/songs/Binary/downloader",
+    "BASE_FOLDER": "/music",
+    "DOWNLOADER_PATH": "/binary/yt-dlp",
     "RECORD_FILE_NAME": ".downloaded_videos.txt",
     "PARALLEL_LIMIT": 4,
-    "PLAYLIST_M3U_FOLDER": "/data/songs/Playlists/1",
+    "PLAYLIST_M3U_FOLDER": "/playlists",
     "MUSIC_MOUNT_PATH": "/music",
     "PLAYLISTS": [],
     "CRON_ENABLED": False,

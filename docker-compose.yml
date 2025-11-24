@@ -1,0 +1,27 @@
+services:
+  synthwave:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: synthwave
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - /data/songs/All Songs:/music
+      - /data/songs/Binary:/binary
+      - /data/songs/Playlists/1:/playlists
+      - ./config.json:/app/config.json
+    environment:
+      - TZ=UTC
+      - FLASK_ENV=production
+    networks:
+      - synthwave-network
+
+networks:
+  synthwave-network:
+    driver: bridge
+
+volumes:
+  songs:
+  playlists:
