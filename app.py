@@ -18,6 +18,8 @@ import queue
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import logging
+import fcntl
+import tempfile
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -72,15 +74,85 @@ download_status = {
 def load_config():
     """Load configuration from JSON file"""
     if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    # Acquire shared lock for reading
+                    fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                    try:
+                        content = f.read()
+                        if not content or not content.strip():
+                            logger.warning(f"Config file is empty (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                time.sleep(0.1)  # Wait briefly and retry
+                                continue
+                            else:
+                                logger.error("Config file empty after retries, using defaults")
+                                return DEFAULT_CONFIG.copy()
+                        
+                        config = json.loads(content)
+                        
+                        # Validate config has required keys
+                        if not isinstance(config, dict) or 'BASE_FOLDER' not in config:
+                            logger.warning(f"Config file corrupted (attempt {attempt + 1}/{max_retries})")
+                            if attempt < max_retries - 1:
+                                time.sleep(0.1)
+                                continue
+                            else:
+                                logger.error("Config file corrupted after retries, using defaults")
+                                return DEFAULT_CONFIG.copy()
+                        
+                        return config
+                    finally:
+                        # Release lock
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error in config file (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                    continue
+                else:
+                    logger.error("Failed to load config after retries, using defaults")
+                    return DEFAULT_CONFIG.copy()
+            except Exception as e:
+                logger.error(f"Error loading config (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                    continue
+                else:
+                    logger.error("Failed to load config after retries, using defaults")
+                    return DEFAULT_CONFIG.copy()
     return DEFAULT_CONFIG.copy()
 
 
 def save_config(config):
-    """Save configuration to JSON file"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+    """Save configuration to JSON file using atomic write"""
+    try:
+        # Write to temporary file first
+        temp_fd, temp_path = tempfile.mkstemp(dir=SCRIPT_DIR, prefix='.config_', suffix='.json.tmp')
+        try:
+            with os.fdopen(temp_fd, 'w') as f:
+                # Acquire exclusive lock for writing
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    json.dump(config, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure data is written to disk
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            
+            # Atomically replace old config with new one
+            os.replace(temp_path, CONFIG_FILE)
+            logger.debug("Config saved successfully")
+        except Exception as e:
+            # Clean up temp file on error
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+            raise
+    except Exception as e:
+        logger.error(f"Failed to save config: {str(e)}")
+        raise
 
 
 def log_message(message, level="info"):
@@ -792,25 +864,33 @@ def api_cron():
 
 def scheduled_download():
     """Function called by scheduler"""
-    config = load_config()
-    
-    if download_status["is_running"]:
-        log_message("Scheduled download skipped - download already in progress", "warning")
-        return
-    
-    log_message("Starting scheduled download", "info")
-    
-    playlists = config.get('PLAYLISTS', [])
-    if not playlists:
-        log_message("No playlists configured for scheduled download", "warning")
-        return
-    
-    download_status["is_running"] = True
-    download_queue.put({'playlists': playlists})
-    
-    # Update last run time
-    config['LAST_RUN'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    save_config(config)
+    try:
+        config = load_config()
+        
+        if download_status["is_running"]:
+            log_message("Scheduled download skipped - download already in progress", "warning")
+            return
+        
+        log_message("Starting scheduled download", "info")
+        
+        playlists = config.get('PLAYLISTS', [])
+        if not playlists:
+            log_message("No playlists configured for scheduled download", "warning")
+            return
+        
+        download_status["is_running"] = True
+        download_queue.put({'playlists': playlists})
+        
+        # Update last run time AFTER queuing to minimize race condition window
+        try:
+            config['LAST_RUN'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            save_config(config)
+        except Exception as e:
+            log_message(f"Failed to update last run time: {str(e)}", "warning")
+            # Continue anyway - this is not critical
+    except Exception as e:
+        log_message(f"Scheduled download failed to start: {str(e)}", "error")
+        download_status["is_running"] = False
 
 
 @socketio.on('connect')
