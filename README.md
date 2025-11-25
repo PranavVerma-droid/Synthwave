@@ -17,7 +17,7 @@ A self-hosted YouTube Music playlist downloader with a modern web interface, aut
 
 ## 🚀 Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Docker Compose: Production (Recommended)
 
 ```bash
 git clone https://github.com/PranavVerma-droid/Synthwave.git
@@ -25,6 +25,20 @@ cd Synthwave/docker
 cp .env.example .env
 
 docker compose up -d
+```
+
+Then visit:
+```
+http://your-server-url:5000
+```
+
+### Using Docker Compose: Development Local Test
+```bash
+git clone https://github.com/PranavVerma-droid/Synthwave.git
+cd Synthwave/docker
+cp .env.example .env
+
+docker compose -f docker-compose-dev.yml up --build
 ```
 
 Then visit:
