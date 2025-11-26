@@ -652,6 +652,26 @@ input:checked + .toggle-slider:before {
     font-weight: 600;
 }
 
+/* Debug Logs */
+.debug-logs-container {
+    background: #1a1a1a;
+    border-color: var(--neutral-700);
+}
+
+.debug-logs-container .log-entry {
+    border-bottom-color: var(--neutral-800);
+}
+
+.debug-logs-container .log-timestamp {
+    color: var(--neutral-500);
+}
+
+.debug-logs-container .log-message {
+    color: #888888;
+    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+}
+
 /* Footer */
 footer {
     text-align: center;

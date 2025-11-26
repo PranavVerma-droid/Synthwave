@@ -62,7 +62,8 @@ DEFAULT_CONFIG = {
     "NEXT_RUN": None,
     "TIMEOUT_METADATA": 600,
     "TIMEOUT_DOWNLOAD": 1800,
-    "MAX_RETRIES": 3
+    "MAX_RETRIES": 3,
+    "DEBUG_MODE": False
 }
 
 # Global state
@@ -73,7 +74,8 @@ download_status = {
     "current_song": None,
     "progress": 0,
     "total": 0,
-    "logs": []
+    "logs": [],
+    "debug_logs": []
 }
 
 
@@ -199,7 +201,7 @@ def save_config(config):
                 raise
 
 
-def log_message(message, level="info"):
+def log_message(message, level="info", is_debug=False):
     """Add log message and emit to web clients"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = {
@@ -207,15 +209,25 @@ def log_message(message, level="info"):
         "level": level,
         "message": message
     }
-    download_status["logs"].append(log_entry)
-    # Keep only last 1000 logs
-    if len(download_status["logs"]) > 1000:
-        download_status["logs"] = download_status["logs"][-1000:]
     
-    try:
-        socketio.emit('log', log_entry, namespace='/')
-    except Exception as e:
-        logger.error(f"Failed to emit log via socketio: {str(e)}")
+    if is_debug:
+        download_status["debug_logs"].append(log_entry)
+        # Keep only last 2000 debug logs
+        if len(download_status["debug_logs"]) > 2000:
+            download_status["debug_logs"] = download_status["debug_logs"][-2000:]
+        try:
+            socketio.emit('debug_log', log_entry, namespace='/')
+        except Exception as e:
+            logger.error(f"Failed to emit debug log via socketio: {str(e)}")
+    else:
+        download_status["logs"].append(log_entry)
+        # Keep only last 1000 logs
+        if len(download_status["logs"]) > 1000:
+            download_status["logs"] = download_status["logs"][-1000:]
+        try:
+            socketio.emit('log', log_entry, namespace='/')
+        except Exception as e:
+            logger.error(f"Failed to emit log via socketio: {str(e)}")
 
 
 def get_video_id(url):
@@ -296,8 +308,13 @@ def update_song_metadata(song_file, album_name, track_number):
         return False
 
 
-def run_command_with_retry(cmd, timeout=60, max_retries=3, retry_delay=5):
+def run_command_with_retry(cmd, timeout=60, max_retries=3, retry_delay=5, config=None):
     """Run command with retry logic"""
+    if config is None:
+        config = load_config()
+    
+    debug_mode = config.get("DEBUG_MODE", False)
+    
     for attempt in range(max_retries):
         try:
             log_message(f"Running command (attempt {attempt + 1}/{max_retries})...", "info")
@@ -307,6 +324,18 @@ def run_command_with_retry(cmd, timeout=60, max_retries=3, retry_delay=5):
                 text=True,
                 timeout=timeout
             )
+            
+            # Emit debug output if debug mode is enabled
+            if debug_mode and result:
+                if result.stdout:
+                    for line in result.stdout.split('\n'):
+                        if line.strip():
+                            log_message(line.strip(), "info", is_debug=True)
+                if result.stderr:
+                    for line in result.stderr.split('\n'):
+                        if line.strip():
+                            log_message(line.strip(), "info", is_debug=True)
+            
             return result
         except subprocess.TimeoutExpired:
             if attempt < max_retries - 1:
@@ -360,7 +389,7 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
         cmd.extend(["--ppa", "EmbedThumbnail+ffmpeg_o:-c:v png -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
     
     try:
-        result = run_command_with_retry(cmd, timeout=timeout_download, max_retries=max_retries)
+        result = run_command_with_retry(cmd, timeout=timeout_download, max_retries=max_retries, config=config)
         return result and result.returncode == 0
     except Exception as e:
         log_message(f"Download failed: {str(e)}", "error")
@@ -759,7 +788,7 @@ def index():
 def api_config():
     """Get or update configuration"""
     if request.method == 'GET':
-        return jsonify(load_config())
+        return jsonify({'config': load_config()})
     
     elif request.method == 'POST':
         config = load_config()
@@ -767,7 +796,7 @@ def api_config():
         
         # Update configuration
         for key in ['BASE_FOLDER', 'DOWNLOADER_PATH', 'RECORD_FILE_NAME', 
-                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH']:
+                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE']:
             if key in data:
                 config[key] = data[key]
         
@@ -840,6 +869,12 @@ def download_status_endpoint():
 def get_logs():
     """Get download logs"""
     return jsonify({'logs': download_status["logs"]})
+
+
+@app.route('/api/debug_logs')
+def get_debug_logs():
+    """Get debug logs"""
+    return jsonify({'debug_logs': download_status["debug_logs"]})
 
 
 @app.route('/api/cron', methods=['GET', 'POST', 'DELETE'])
@@ -978,6 +1013,15 @@ def handle_request_logs():
         emit('all_logs', {'logs': download_status["logs"]})
     except Exception as e:
         logger.error(f"Failed to send logs: {str(e)}")
+
+
+@socketio.on('request_debug_logs')
+def handle_request_debug_logs():
+    """Send all debug logs to client"""
+    try:
+        emit('all_debug_logs', {'debug_logs': download_status["debug_logs"]})
+    except Exception as e:
+        logger.error(f"Failed to send debug logs: {str(e)}")
 
 
 if __name__ == '__main__':

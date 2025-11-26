@@ -35,6 +35,10 @@
                     <span class="nav-icon">📜</span>
                     <span>Logs</span>
                 </a>
+                <a href="#debug-logs" class="nav-item" id="debug-logs-nav" onclick="scrollToSection('debug-logs')" style="display: none;">
+                    <span class="nav-icon">🐛</span>
+                    <span>Debug Logs</span>
+                </a>
                 <a href="#automation" class="nav-item" onclick="scrollToSection('automation')">
                     <span class="nav-icon">⏰</span>
                     <span>Automation</span>
@@ -91,6 +95,13 @@
                                 <input type="text" id="record_file_name" class="config-input" 
                                        value="{{ config.RECORD_FILE_NAME }}" 
                                        placeholder=".downloaded_videos.txt">
+                            </div>
+                            <div class="config-item">
+                                <label for="debug_mode">Debug Mode</label>
+                                <select id="debug_mode" class="config-input">
+                                    <option value="false" {% if not config.DEBUG_MODE %}selected{% endif %}>Off</option>
+                                    <option value="true" {% if config.DEBUG_MODE %}selected{% endif %}>On</option>
+                                </select>
                             </div>
                         </div>
                         <div style="text-align: right; margin-top: 1.5rem;">
@@ -189,6 +200,32 @@
                             <div class="log-entry log-info">
                                 <span class="log-timestamp">[{{ status.logs[-1].timestamp if status.logs else 'Ready' }}]</span>
                                 <span class="log-message">System ready. Waiting for download commands...</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Debug Logs Section -->
+                <section id="debug-logs" style="display: none;">
+                    <div class="section-header">
+                        <h2><span>🐛</span> Debug Logs (yt-dlp Output)</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="logs-controls">
+                            <button id="debug-autoscroll-btn" onclick="toggleDebugAutoScroll()" class="btn btn-secondary btn-sm">
+                                📜 Auto-scroll: ON
+                            </button>
+                            <button onclick="clearDebugLogs()" class="btn btn-secondary btn-sm">
+                                🗑️ Clear Debug Logs
+                            </button>
+                            <button onclick="exportDebugLogs()" class="btn btn-accent btn-sm">
+                                📥 Export Debug Logs
+                            </button>
+                        </div>
+                        <div id="debug-logs-container" class="logs-container debug-logs-container">
+                            <div class="log-entry log-info">
+                                <span class="log-timestamp">[Ready]</span>
+                                <span class="log-message">Debug mode active. yt-dlp output will appear here...</span>
                             </div>
                         </div>
                     </div>

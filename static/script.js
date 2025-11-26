@@ -3,16 +3,25 @@ const socket = io();
 
 // Global variables
 let autoScroll = true;
+let debugAutoScroll = true;
 let cronEnabled = false;
 let connectionStatus = 'connecting';
+let debugMode = false;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadPlaylists();
     loadCronSettings();
+    loadConfig();
     setupSocketListeners();
     updateCronUI();
     updateConnectionStatus();
+    
+    // Attach debug mode change listener
+    const debugModeSelect = document.getElementById('debug_mode');
+    if (debugModeSelect) {
+        debugModeSelect.addEventListener('change', previewDebugMode);
+    }
 });
 
 function updateConnectionStatus() {
@@ -49,6 +58,9 @@ function setupSocketListeners() {
         connectionStatus = 'connected';
         updateConnectionStatus();
         socket.emit('request_logs');
+        if (debugMode) {
+            socket.emit('request_debug_logs');
+        }
         showNotification('Connected to server', 'success');
     });
 
@@ -74,6 +86,16 @@ function setupSocketListeners() {
         data.logs.forEach(log => addLogEntry(log));
     });
 
+    socket.on('debug_log', function(data) {
+        addDebugLogEntry(data);
+    });
+
+    socket.on('all_debug_logs', function(data) {
+        const debugLogsContainer = document.getElementById('debug-logs-container');
+        debugLogsContainer.innerHTML = '';
+        data.debug_logs.forEach(log => addDebugLogEntry(log));
+    });
+
     socket.on('progress', function(data) {
         updateProgress(data);
     });
@@ -88,6 +110,18 @@ function setupSocketListeners() {
 }
 
 // Configuration Management
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        debugMode = data.config.DEBUG_MODE || false;
+        updateDebugUI();
+    } catch (error) {
+        console.error('Error loading config:', error);
+    }
+}
+
 async function saveConfig() {
     const config = {
         BASE_FOLDER: document.getElementById('base_folder').value,
@@ -95,7 +129,8 @@ async function saveConfig() {
         PLAYLIST_M3U_FOLDER: document.getElementById('playlist_m3u_folder').value,
         MUSIC_MOUNT_PATH: document.getElementById('music_mount_path').value,
         PARALLEL_LIMIT: parseInt(document.getElementById('parallel_limit').value),
-        RECORD_FILE_NAME: document.getElementById('record_file_name').value
+        RECORD_FILE_NAME: document.getElementById('record_file_name').value,
+        DEBUG_MODE: document.getElementById('debug_mode').value === 'true'
     };
 
     try {
@@ -110,6 +145,8 @@ async function saveConfig() {
         const result = await response.json();
         
         if (result.success) {
+            debugMode = document.getElementById('debug_mode').value === 'true';
+            updateDebugUI();
             showNotification('Configuration saved successfully!', 'success');
         } else {
             showNotification('Failed to save configuration', 'error');
@@ -339,6 +376,65 @@ function toggleAutoScroll() {
     showNotification(`Auto-scroll ${autoScroll ? 'enabled' : 'disabled'}`, 'info');
 }
 
+// Debug Logs Management
+function addDebugLogEntry(log) {
+    const debugLogsContainer = document.getElementById('debug-logs-container');
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${log.level}`;
+    
+    entry.innerHTML = `
+        <span class="log-timestamp">[${log.timestamp}]</span>
+        <span class="log-message">${escapeHtml(log.message)}</span>
+    `;
+
+    debugLogsContainer.appendChild(entry);
+
+    // Auto-scroll if enabled
+    if (debugAutoScroll) {
+        debugLogsContainer.scrollTop = debugLogsContainer.scrollHeight;
+    }
+}
+
+function clearDebugLogs() {
+    const debugLogsContainer = document.getElementById('debug-logs-container');
+    debugLogsContainer.innerHTML = '';
+    showNotification('Debug logs cleared', 'info');
+}
+
+function toggleDebugAutoScroll() {
+    debugAutoScroll = !debugAutoScroll;
+    const btn = document.getElementById('debug-autoscroll-btn');
+    btn.textContent = `📜 Auto-scroll: ${debugAutoScroll ? 'ON' : 'OFF'}`;
+    showNotification(`Debug auto-scroll ${debugAutoScroll ? 'enabled' : 'disabled'}`, 'info');
+}
+
+function updateDebugUI() {
+    const debugSection = document.getElementById('debug-logs');
+    const debugNav = document.getElementById('debug-logs-nav');
+    
+    if (debugMode) {
+        debugSection.style.display = 'block';
+        debugNav.style.display = 'flex';
+        socket.emit('request_debug_logs');
+    } else {
+        debugSection.style.display = 'none';
+        debugNav.style.display = 'none';
+    }
+}
+
+function previewDebugMode() {
+    // Preview the debug mode without saving
+    debugMode = document.getElementById('debug_mode').value === 'true';
+    updateDebugUI();
+}
+
+function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    const btn = document.getElementById('autoscroll-btn');
+    btn.textContent = `📜 Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
+    showNotification(`Auto-scroll ${autoScroll ? 'enabled' : 'disabled'}`, 'info');
+}
+
 function exportLogs() {
     const logsContainer = document.getElementById('logs-container');
     const logText = Array.from(logsContainer.querySelectorAll('.log-entry')).map(entry => {
@@ -356,6 +452,25 @@ function exportLogs() {
     URL.revokeObjectURL(url);
     
     showNotification('Logs exported successfully', 'success');
+}
+
+function exportDebugLogs() {
+    const debugLogsContainer = document.getElementById('debug-logs-container');
+    const logText = Array.from(debugLogsContainer.querySelectorAll('.log-entry')).map(entry => {
+        const timestamp = entry.querySelector('.log-timestamp')?.textContent || '';
+        const message = entry.querySelector('.log-message')?.textContent || '';
+        return `${timestamp} ${message}`;
+    }).join('\n');
+    
+    const blob = new Blob([logText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `music-downloader-debug-logs-${new Date().toISOString()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showNotification('Debug logs exported successfully', 'success');
 }
 
 // Cron Job Management
