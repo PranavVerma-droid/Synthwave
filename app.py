@@ -23,7 +23,13 @@ import tempfile
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, 
+                    cors_allowed_origins="*",
+                    async_mode='eventlet',
+                    ping_timeout=60,
+                    ping_interval=25,
+                    logger=True,
+                    engineio_logger=False)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -54,8 +60,8 @@ DEFAULT_CONFIG = {
     },
     "LAST_RUN": None,
     "NEXT_RUN": None,
-    "TIMEOUT_METADATA": 120,
-    "TIMEOUT_DOWNLOAD": 600,
+    "TIMEOUT_METADATA": 600,
+    "TIMEOUT_DOWNLOAD": 1800,
     "MAX_RETRIES": 3
 }
 
@@ -128,31 +134,69 @@ def load_config():
 
 def save_config(config):
     """Save configuration to JSON file using atomic write"""
-    try:
-        # Write to temporary file first
-        temp_fd, temp_path = tempfile.mkstemp(dir=SCRIPT_DIR, prefix='.config_', suffix='.json.tmp')
+    max_retries = 5
+    retry_delay = 0.1
+    
+    for attempt in range(max_retries):
         try:
-            with os.fdopen(temp_fd, 'w') as f:
-                # Acquire exclusive lock for writing
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            # Write to temporary file first
+            temp_fd, temp_path = tempfile.mkstemp(dir=SCRIPT_DIR, prefix='.config_', suffix='.json.tmp')
+            try:
+                with os.fdopen(temp_fd, 'w') as f:
+                    # Acquire exclusive lock for writing
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    try:
+                        json.dump(config, f, indent=2)
+                        f.flush()
+                        os.fsync(f.fileno())  # Ensure data is written to disk
+                    finally:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                
+                # Use rename with retry for cross-device scenarios
                 try:
-                    json.dump(config, f, indent=2)
-                    f.flush()
-                    os.fsync(f.fileno())  # Ensure data is written to disk
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            
-            # Atomically replace old config with new one
-            os.replace(temp_path, CONFIG_FILE)
-            logger.debug("Config saved successfully")
+                    os.replace(temp_path, CONFIG_FILE)
+                    logger.debug("Config saved successfully")
+                    return  # Success!
+                except OSError as e:
+                    if e.errno == 16:  # EBUSY - Device or resource busy
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Config file busy, retrying ({attempt + 1}/{max_retries})...")
+                            time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                            # Clean up and retry
+                            if os.path.exists(temp_path):
+                                os.unlink(temp_path)
+                            continue
+                        else:
+                            # Last resort: try direct write
+                            logger.warning("Using fallback: direct write to config file")
+                            with open(CONFIG_FILE, 'w') as f:
+                                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                                try:
+                                    json.dump(config, f, indent=2)
+                                    f.flush()
+                                    os.fsync(f.fileno())
+                                finally:
+                                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                            if os.path.exists(temp_path):
+                                os.unlink(temp_path)
+                            return
+                    raise
+            except Exception as e:
+                # Clean up temp file on error
+                if os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+                raise
         except Exception as e:
-            # Clean up temp file on error
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-            raise
-    except Exception as e:
-        logger.error(f"Failed to save config: {str(e)}")
-        raise
+            if attempt < max_retries - 1:
+                logger.warning(f"Save config attempt {attempt + 1} failed: {str(e)}")
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            else:
+                logger.error(f"Failed to save config after {max_retries} attempts: {str(e)}")
+                raise
 
 
 def log_message(message, level="info"):
@@ -168,7 +212,10 @@ def log_message(message, level="info"):
     if len(download_status["logs"]) > 1000:
         download_status["logs"] = download_status["logs"][-1000:]
     
-    socketio.emit('log', log_entry)
+    try:
+        socketio.emit('log', log_entry, namespace='/')
+    except Exception as e:
+        logger.error(f"Failed to emit log via socketio: {str(e)}")
 
 
 def get_video_id(url):
@@ -432,7 +479,7 @@ def process_playlist(playlist_url, config):
         log_message("Fetching playlist metadata...", "info")
         result = run_command_with_retry(
             [downloader, "--print", "%(playlist_title)s", playlist_url],
-            timeout=timeout_metadata,
+            timeout=timeout_metadata * 2,  # Double timeout for initial metadata fetch
             max_retries=max_retries
         )
         
@@ -443,7 +490,7 @@ def process_playlist(playlist_url, config):
             return
             
     except subprocess.TimeoutExpired:
-        log_message(f"Failed to fetch playlist title: timeout after {timeout_metadata}s", "error")
+        log_message(f"Failed to fetch playlist title: timeout after {timeout_metadata * 2}s (large playlists may need more time)", "error")
         return
     except Exception as e:
         log_message(f"Failed to fetch playlist title: {str(e)}", "error")
@@ -463,12 +510,15 @@ def process_playlist(playlist_url, config):
     download_status["current_playlist"] = playlist_name
     
     # Emit initial status
-    socketio.emit('progress', {
-        'current': 0,
-        'total': 0,
-        'playlist': playlist_name,
-        'song': 'Fetching song list...'
-    })
+    try:
+        socketio.emit('progress', {
+            'current': 0,
+            'total': 0,
+            'playlist': playlist_name,
+            'song': 'Fetching song list...'
+        }, namespace='/')
+    except Exception as e:
+        logger.error(f"Failed to emit progress: {str(e)}")
     
     # Determine target folder
     if is_album_url(playlist_url):
@@ -483,10 +533,11 @@ def process_playlist(playlist_url, config):
     
     # Get song list with retry
     try:
-        log_message("Fetching song list...", "info")
+        log_message("Fetching song list (this may take a while for large playlists)...", "info")
+        # For large playlists, this can take a very long time - use extended timeout
         result = run_command_with_retry(
             [downloader, "--flat-playlist", "--print", "%(playlist_index)s:%(title)s:%(id)s", playlist_url],
-            timeout=timeout_metadata,
+            timeout=timeout_metadata * 3,  # Triple timeout for song list fetching
             max_retries=max_retries
         )
         
@@ -497,7 +548,7 @@ def process_playlist(playlist_url, config):
             return
             
     except subprocess.TimeoutExpired:
-        log_message(f"Failed to retrieve song list: timeout after {timeout_metadata}s", "error")
+        log_message(f"Failed to retrieve song list: timeout after {timeout_metadata * 3}s (playlist may have too many tracks or network is slow)", "error")
         return
     except Exception as e:
         log_message(f"Failed to retrieve song list: {str(e)}", "error")
@@ -524,12 +575,15 @@ def process_playlist(playlist_url, config):
     download_status["progress"] = 0
     
     # Emit updated total
-    socketio.emit('progress', {
-        'current': 0,
-        'total': total_songs,
-        'playlist': playlist_name,
-        'song': 'Starting download...'
-    })
+    try:
+        socketio.emit('progress', {
+            'current': 0,
+            'total': total_songs,
+            'playlist': playlist_name,
+            'song': 'Starting download...'
+        }, namespace='/')
+    except Exception as e:
+        logger.error(f"Failed to emit progress: {str(e)}")
     
     record_file = os.path.join(base_folder, config["RECORD_FILE_NAME"])
     
@@ -540,12 +594,15 @@ def process_playlist(playlist_url, config):
         
         download_status["current_song"] = f"{title} ({idx}/{total_songs})"
         download_status["progress"] = idx
-        socketio.emit('progress', {
-            'current': idx,
-            'total': total_songs,
-            'playlist': playlist_name,
-            'song': title
-        })
+        try:
+            socketio.emit('progress', {
+                'current': idx,
+                'total': total_songs,
+                'playlist': playlist_name,
+                'song': title
+            }, namespace='/')
+        except Exception as e:
+            logger.error(f"Failed to emit progress for song {idx}: {str(e)}")
         
         log_message(f"[{idx}/{total_songs}] {title} (ID: {video_id})", "info")
         
@@ -617,12 +674,15 @@ def download_worker():
             
             # Update downloader
             log_message("Updating downloader...", "info")
-            socketio.emit('progress', {
-                'current': 0,
-                'total': 0,
-                'playlist': 'System',
-                'song': 'Updating downloader...'
-            })
+            try:
+                socketio.emit('progress', {
+                    'current': 0,
+                    'total': 0,
+                    'playlist': 'System',
+                    'song': 'Updating downloader...'
+                }, namespace='/')
+            except Exception as e:
+                logger.error(f"Failed to emit progress: {str(e)}")
             
             try:
                 result = subprocess.run(
@@ -665,7 +725,10 @@ def download_worker():
             download_status["is_running"] = False
             download_status["current_playlist"] = "Completed"
             download_status["current_song"] = "All downloads finished"
-            socketio.emit('download_complete', {'success': True})
+            try:
+                socketio.emit('download_complete', {'success': True}, namespace='/')
+            except Exception as e:
+                logger.error(f"Failed to emit download_complete: {str(e)}")
             
         except queue.Empty:
             continue
@@ -674,7 +737,10 @@ def download_worker():
             download_status["is_running"] = False
             download_status["current_playlist"] = "Error"
             download_status["current_song"] = str(e)
-            socketio.emit('download_complete', {'success': False, 'error': str(e)})
+            try:
+                socketio.emit('download_complete', {'success': False, 'error': str(e)}, namespace='/')
+            except Exception as emit_error:
+                logger.error(f"Failed to emit error: {str(emit_error)}")
 
 
 # Start worker thread
@@ -896,13 +962,22 @@ def scheduled_download():
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
-    emit('status', download_status)
+    try:
+        logger.info(f"Client connected: {request.sid}")
+        emit('status', download_status)
+        return True
+    except Exception as e:
+        logger.error(f"Connection error: {str(e)}")
+        return False
 
 
 @socketio.on('request_logs')
 def handle_request_logs():
     """Send all logs to client"""
-    emit('all_logs', {'logs': download_status["logs"]})
+    try:
+        emit('all_logs', {'logs': download_status["logs"]})
+    except Exception as e:
+        logger.error(f"Failed to send logs: {str(e)}")
 
 
 if __name__ == '__main__':
@@ -933,5 +1008,5 @@ if __name__ == '__main__':
             logger.error(f"Failed to initialize cron job: {str(e)}")
     
     # Run the app
-    logger.info("Starting YouTube Music Playlist Downloader")
+    logger.info("Starting Synthwave: YouTube Music Playlist Downloader")
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
