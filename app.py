@@ -75,7 +75,8 @@ download_status = {
     "progress": 0,
     "total": 0,
     "logs": [],
-    "debug_logs": []
+    "debug_logs": [],
+    "cancel_requested": False
 }
 
 
@@ -496,6 +497,11 @@ def generate_m3u_playlist(playlist_name, playlist_url, song_list, config):
 
 def process_playlist(playlist_url, config):
     """Process a single playlist or album"""
+    # Check for cancellation at the start
+    if download_status["cancel_requested"]:
+        log_message("Playlist processing cancelled before start", "warning")
+        return
+    
     downloader = config["DOWNLOADER_PATH"]
     base_folder = config["BASE_FOLDER"]
     timeout_metadata = config.get("TIMEOUT_METADATA", 120)
@@ -600,6 +606,11 @@ def process_playlist(playlist_url, config):
     total_songs = len(song_list)
     log_message(f"Found {total_songs} songs", "success")
     
+    # Check for cancellation before starting downloads
+    if download_status["cancel_requested"]:
+        log_message("Playlist processing cancelled before downloads", "warning")
+        return
+    
     download_status["total"] = total_songs
     download_status["progress"] = 0
     
@@ -618,6 +629,11 @@ def process_playlist(playlist_url, config):
     
     # Process each song
     for idx, song in enumerate(song_list, 1):
+        # Check for cancellation
+        if download_status["cancel_requested"]:
+            log_message("Cancelling playlist processing...", "warning")
+            return
+        
         video_id = song['video_id']
         title = song['title']
         
@@ -695,11 +711,12 @@ def download_worker():
             playlist_urls = task.get('playlists', [])
             config = load_config()
             
-            # Reset progress state
+            # Reset progress state and cancel flag
             download_status["progress"] = 0
             download_status["total"] = 0
             download_status["current_playlist"] = None
             download_status["current_song"] = None
+            download_status["cancel_requested"] = False
             
             # Update downloader
             log_message("Updating downloader...", "info")
@@ -742,22 +759,40 @@ def download_worker():
             if album_urls:
                 log_message("PASS 1: Processing Albums", "info")
                 for url in album_urls:
+                    if download_status["cancel_requested"]:
+                        log_message("Download cancelled by user", "warning")
+                        break
                     process_playlist(url, config)
             
             # Process playlists
             if playlist_urls_list:
                 log_message("PASS 2: Processing Playlists", "info")
                 for url in playlist_urls_list:
+                    if download_status["cancel_requested"]:
+                        log_message("Download cancelled by user", "warning")
+                        break
                     process_playlist(url, config)
             
-            log_message("All downloads completed!", "success")
-            download_status["is_running"] = False
-            download_status["current_playlist"] = "Completed"
-            download_status["current_song"] = "All downloads finished"
-            try:
-                socketio.emit('download_complete', {'success': True}, namespace='/')
-            except Exception as e:
-                logger.error(f"Failed to emit download_complete: {str(e)}")
+            # Check if cancelled
+            if download_status["cancel_requested"]:
+                log_message("Download process cancelled!", "warning")
+                download_status["is_running"] = False
+                download_status["current_playlist"] = "Cancelled"
+                download_status["current_song"] = "Download cancelled by user"
+                download_status["cancel_requested"] = False
+                try:
+                    socketio.emit('download_complete', {'success': False, 'cancelled': True}, namespace='/')
+                except Exception as e:
+                    logger.error(f"Failed to emit download_complete: {str(e)}")
+            else:
+                log_message("All downloads completed!", "success")
+                download_status["is_running"] = False
+                download_status["current_playlist"] = "Completed"
+                download_status["current_song"] = "All downloads finished"
+                try:
+                    socketio.emit('download_complete', {'success': True}, namespace='/')
+                except Exception as e:
+                    logger.error(f"Failed to emit download_complete: {str(e)}")
             
         except queue.Empty:
             continue
@@ -853,10 +888,23 @@ def start_download():
         return jsonify({'success': False, 'error': 'No playlists configured'}), 400
     
     download_status["is_running"] = True
+    download_status["cancel_requested"] = False
     download_status["logs"] = []
     download_queue.put({'playlists': playlists})
     
     return jsonify({'success': True, 'message': 'Download started'})
+
+
+@app.route('/api/download/cancel', methods=['POST'])
+def cancel_download():
+    """Cancel ongoing download"""
+    if not download_status["is_running"]:
+        return jsonify({'success': False, 'error': 'No download in progress'}), 400
+    
+    download_status["cancel_requested"] = True
+    log_message("Cancellation requested by user", "warning")
+    
+    return jsonify({'success': True, 'message': 'Download cancellation requested'})
 
 
 @app.route('/api/download/status')

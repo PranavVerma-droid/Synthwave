@@ -268,6 +268,7 @@ function updatePlaylistsDisplay(playlists) {
 // Download Control
 async function startDownload() {
     const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
     
     startBtn.disabled = true;
     startBtn.textContent = 'Starting...';
@@ -285,6 +286,8 @@ async function startDownload() {
         
         if (result.success) {
             document.getElementById('progress-section').style.display = 'block';
+            startBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-flex';
             showNotification('Download started!', 'success');
         } else {
             showNotification(result.error || 'Failed to start download', 'error');
@@ -296,6 +299,43 @@ async function startDownload() {
         showNotification('Error starting download', 'error');
         startBtn.disabled = false;
         startBtn.textContent = 'Start Download';
+    }
+}
+
+async function cancelDownload() {
+    const cancelBtn = document.getElementById('cancel-btn');
+    const startBtn = document.getElementById('start-btn');
+    
+    if (!confirm('Are you sure you want to cancel the current download?')) {
+        return;
+    }
+    
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Cancelling...';
+
+    try {
+        const response = await fetch('/api/download/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Download cancellation requested', 'warning');
+        } else {
+            showNotification(result.error || 'Failed to cancel download', 'error');
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = 'Cancel Download';
+        }
+    } catch (error) {
+        console.error('Error cancelling download:', error);
+        showNotification('Error cancelling download', 'error');
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel Download';
     }
 }
 
@@ -318,26 +358,44 @@ function updateProgress(data) {
 }
 
 function updateStatus(data) {
+    const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
     if (data.is_running) {
-        document.getElementById('start-btn').disabled = true;
-        document.getElementById('start-btn').textContent = 'Download in Progress...';
+        startBtn.style.display = 'none';
+        startBtn.disabled = true;
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '⛔ Cancel Download';
         document.getElementById('progress-section').style.display = 'block';
     } else {
-        document.getElementById('start-btn').disabled = false;
-        document.getElementById('start-btn').textContent = 'Start Download';
+        startBtn.style.display = 'inline-flex';
+        startBtn.disabled = false;
+        startBtn.textContent = '🚀 Start Download';
+        cancelBtn.style.display = 'none';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '⛔ Cancel Download';
         // Don't hide progress section to show final results
     }
 }
 
 function handleDownloadComplete(data) {
     const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
+    startBtn.style.display = 'inline-flex';
     startBtn.disabled = false;
-    startBtn.textContent = 'Start Download';
+    startBtn.textContent = '🚀 Start Download';
+    cancelBtn.style.display = 'none';
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = '⛔ Cancel Download';
 
-    if (data.success) {
-        showNotification('All downloads completed successfully!', 'success');
+    if (data.cancelled) {
+        showNotification('Download cancelled by user', 'warning');
+    } else if (data.success) {
+        showNotification('All downloads completed!', 'success');
     } else {
-        showNotification('Download completed with errors: ' + (data.error || 'Unknown error'), 'error');
+        showNotification('Download failed: ' + (data.error || 'Unknown error'), 'error');
     }
     
     // Keep progress section visible to show final results

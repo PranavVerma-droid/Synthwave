@@ -513,6 +513,14 @@ input:checked + .toggle-slider:before {
 /* Download Section */
 .download-controls {
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.download-controls .btn-large {
+    min-width: 250px;
 }
 
 .download-info {
