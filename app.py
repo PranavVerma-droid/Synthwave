@@ -41,7 +41,14 @@ scheduler.start()
 
 # Configuration
 SCRIPT_DIR = Path(__file__).parent.absolute()
-CONFIG_FILE = SCRIPT_DIR / "config.json"
+CONFIG_DIR = SCRIPT_DIR / "config"
+LOGS_DIR = SCRIPT_DIR / "logs"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+
+# Ensure directories exist
+CONFIG_DIR.mkdir(exist_ok=True)
+LOGS_DIR.mkdir(exist_ok=True)
+
 DEFAULT_CONFIG = {
     "BASE_FOLDER": "/music",
     "DOWNLOADER_PATH": "/binary/yt-dlp",

@@ -9,7 +9,8 @@ services:
       - ${MUSIC_PATH}:/music
       - ${BINARY_PATH}:/binary
       - ${PLAYLISTS_PATH}:/playlists
-      - ${CONFIG_PATH}:/app/config.json
+      - ${CONFIG_PATH}:/app/config
+      - ${LOGS_PATH}:/app/logs
     environment:
       - TZ=${TZ}
       - FLASK_ENV=${FLASK_ENV}
