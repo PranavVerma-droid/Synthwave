@@ -149,8 +149,8 @@ def save_config(config):
     
     for attempt in range(max_retries):
         try:
-            # Write to temporary file first
-            temp_fd, temp_path = tempfile.mkstemp(dir=SCRIPT_DIR, prefix='.config_', suffix='.json.tmp')
+            # Write to temporary file first (in same directory to avoid cross-device issues)
+            temp_fd, temp_path = tempfile.mkstemp(dir=CONFIG_DIR, prefix='.config_', suffix='.json.tmp')
             try:
                 with os.fdopen(temp_fd, 'w') as f:
                     # Acquire exclusive lock for writing
@@ -227,6 +227,9 @@ def log_message(message, level="info", is_debug=False):
             socketio.emit('debug_log', log_entry, namespace='/')
         except Exception as e:
             logger.error(f"Failed to emit debug log via socketio: {str(e)}")
+        
+        # Always write debug logs to file
+        write_to_log_file(message, level.upper())
     else:
         download_status["logs"].append(log_entry)
         # Keep only last 1000 logs
@@ -236,6 +239,119 @@ def log_message(message, level="info", is_debug=False):
             socketio.emit('log', log_entry, namespace='/')
         except Exception as e:
             logger.error(f"Failed to emit log via socketio: {str(e)}")
+        
+        # Always write regular logs to file
+        write_to_log_file(message, level.upper())
+
+
+# Log History Management
+LOGS_INFO_FILE = LOGS_DIR / "logs-info.json"
+current_log_file = None
+current_log_handler = None
+
+
+def load_logs_info():
+    """Load logs info from JSON file"""
+    if LOGS_INFO_FILE.exists():
+        try:
+            with open(LOGS_INFO_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading logs info: {str(e)}")
+            return {"logs": []}
+    return {"logs": []}
+
+
+def save_logs_info(logs_info):
+    """Save logs info to JSON file"""
+    try:
+        with open(LOGS_INFO_FILE, 'w') as f:
+            json.dump(logs_info, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving logs info: {str(e)}")
+
+
+def create_log_file(trigger_type="manual"):
+    """Create a new log file for a download session"""
+    global current_log_file, current_log_handler
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"log-{timestamp}.log"
+    log_filepath = LOGS_DIR / log_filename
+    
+    # Create log file
+    current_log_file = log_filepath
+    current_log_handler = open(log_filepath, 'w', buffering=1)  # Line buffering
+    
+    # Update logs info
+    logs_info = load_logs_info()
+    log_entry = {
+        "filename": log_filename,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "trigger_type": trigger_type,  # "manual" or "cron"
+        "status": "running",
+        "playlists_processed": 0,
+        "songs_downloaded": 0,
+        "errors": 0
+    }
+    logs_info["logs"].insert(0, log_entry)  # Add to beginning
+    save_logs_info(logs_info)
+    
+    # Write header to log file
+    header = f"{'='*80}\n"
+    header += f"Download Session Started: {log_entry['timestamp']}\n"
+    header += f"Trigger Type: {trigger_type.upper()}\n"
+    header += f"{'='*80}\n\n"
+    current_log_handler.write(header)
+    
+    return log_filename
+
+
+def write_to_log_file(message, level="INFO"):
+    """Write a message to the current log file"""
+    global current_log_handler
+    
+    if current_log_handler and not current_log_handler.closed:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] [{level}] {message}\n"
+        try:
+            current_log_handler.write(log_line)
+        except Exception as e:
+            logger.error(f"Error writing to log file: {str(e)}")
+
+
+def close_log_file(playlists_processed=0, songs_downloaded=0, errors=0, status="completed"):
+    """Close the current log file and update its metadata"""
+    global current_log_file, current_log_handler
+    
+    if current_log_handler and not current_log_handler.closed:
+        # Write footer
+        footer = f"\n{'='*80}\n"
+        footer += f"Download Session Ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        footer += f"Status: {status.upper()}\n"
+        footer += f"Playlists Processed: {playlists_processed}\n"
+        footer += f"Songs Downloaded: {songs_downloaded}\n"
+        footer += f"Errors: {errors}\n"
+        footer += f"{'='*80}\n"
+        current_log_handler.write(footer)
+        current_log_handler.close()
+        
+        # Update logs info
+        if current_log_file:
+            logs_info = load_logs_info()
+            filename = current_log_file.name
+            for log_entry in logs_info["logs"]:
+                if log_entry["filename"] == filename:
+                    log_entry["status"] = status
+                    log_entry["playlists_processed"] = playlists_processed
+                    log_entry["songs_downloaded"] = songs_downloaded
+                    log_entry["errors"] = errors
+                    log_entry["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    break
+            save_logs_info(logs_info)
+        
+        current_log_file = None
+        current_log_handler = None
 
 
 def get_video_id(url):
@@ -716,7 +832,15 @@ def download_worker():
                 break
             
             playlist_urls = task.get('playlists', [])
+            trigger_type = task.get('trigger_type', 'manual')
             config = load_config()
+            
+            # Create log file for this session
+            create_log_file(trigger_type)
+            
+            playlists_processed = 0
+            songs_downloaded = 0
+            errors = 0
             
             # Reset progress state and cancel flag
             download_status["progress"] = 0
@@ -747,8 +871,10 @@ def download_worker():
                     log_message("Downloader updated successfully", "success")
                 else:
                     log_message("Failed to update downloader", "warning")
+                    errors += 1
             except Exception as e:
                 log_message(f"Update check failed: {str(e)}", "warning")
+                errors += 1
             
             # Categorize URLs
             album_urls = []
@@ -769,7 +895,12 @@ def download_worker():
                     if download_status["cancel_requested"]:
                         log_message("Download cancelled by user", "warning")
                         break
-                    process_playlist(url, config)
+                    try:
+                        process_playlist(url, config)
+                        playlists_processed += 1
+                    except Exception as e:
+                        log_message(f"Error processing album: {str(e)}", "error")
+                        errors += 1
             
             # Process playlists
             if playlist_urls_list:
@@ -778,7 +909,12 @@ def download_worker():
                     if download_status["cancel_requested"]:
                         log_message("Download cancelled by user", "warning")
                         break
-                    process_playlist(url, config)
+                    try:
+                        process_playlist(url, config)
+                        playlists_processed += 1
+                    except Exception as e:
+                        log_message(f"Error processing playlist: {str(e)}", "error")
+                        errors += 1
             
             # Check if cancelled
             if download_status["cancel_requested"]:
@@ -787,6 +923,7 @@ def download_worker():
                 download_status["current_playlist"] = "Cancelled"
                 download_status["current_song"] = "Download cancelled by user"
                 download_status["cancel_requested"] = False
+                close_log_file(playlists_processed, songs_downloaded, errors, "cancelled")
                 try:
                     socketio.emit('download_complete', {'success': False, 'cancelled': True}, namespace='/')
                 except Exception as e:
@@ -796,6 +933,7 @@ def download_worker():
                 download_status["is_running"] = False
                 download_status["current_playlist"] = "Completed"
                 download_status["current_song"] = "All downloads finished"
+                close_log_file(playlists_processed, songs_downloaded, errors, "completed")
                 try:
                     socketio.emit('download_complete', {'success': True}, namespace='/')
                 except Exception as e:
@@ -808,6 +946,7 @@ def download_worker():
             download_status["is_running"] = False
             download_status["current_playlist"] = "Error"
             download_status["current_song"] = str(e)
+            close_log_file(0, 0, 1, "error")
             try:
                 socketio.emit('download_complete', {'success': False, 'error': str(e)}, namespace='/')
             except Exception as emit_error:
@@ -897,7 +1036,7 @@ def start_download():
     download_status["is_running"] = True
     download_status["cancel_requested"] = False
     download_status["logs"] = []
-    download_queue.put({'playlists': playlists})
+    download_queue.put({'playlists': playlists, 'trigger_type': 'manual'})
     
     return jsonify({'success': True, 'message': 'Download started'})
 
@@ -930,6 +1069,66 @@ def get_logs():
 def get_debug_logs():
     """Get debug logs"""
     return jsonify({'debug_logs': download_status["debug_logs"]})
+
+
+@app.route('/api/log-history')
+def get_log_history():
+    """Get log history"""
+    try:
+        logs_info = load_logs_info()
+        return jsonify({'success': True, 'logs': logs_info.get('logs', [])})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/log-history/<filename>')
+def get_log_file(filename):
+    """Download a specific log file"""
+    try:
+        # Validate filename to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'success': False, 'error': 'Invalid filename'}), 400
+        
+        log_file_path = LOGS_DIR / filename
+        
+        if not log_file_path.exists():
+            return jsonify({'success': False, 'error': 'Log file not found'}), 404
+        
+        with open(log_file_path, 'r') as f:
+            content = f.read()
+        
+        return content, 200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/log-history/<filename>', methods=['DELETE'])
+def delete_log_file(filename):
+    """Delete a specific log file"""
+    try:
+        # Validate filename to prevent directory traversal
+        if '..' in filename or '/' in filename:
+            return jsonify({'success': False, 'error': 'Invalid filename'}), 400
+        
+        log_file_path = LOGS_DIR / filename
+        
+        if not log_file_path.exists():
+            return jsonify({'success': False, 'error': 'Log file not found'}), 404
+        
+        # Delete the log file
+        log_file_path.unlink()
+        
+        # Update logs info
+        logs_info = load_logs_info()
+        logs_info['logs'] = [log for log in logs_info.get('logs', []) if log.get('filename') != filename]
+        save_logs_info(logs_info)
+        
+        return jsonify({'success': True, 'message': 'Log file deleted successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/cron', methods=['GET', 'POST', 'DELETE'])
@@ -1035,7 +1234,7 @@ def scheduled_download():
             return
         
         download_status["is_running"] = True
-        download_queue.put({'playlists': playlists})
+        download_queue.put({'playlists': playlists, 'trigger_type': 'cron'})
         
         # Update last run time AFTER queuing to minimize race condition window
         try:

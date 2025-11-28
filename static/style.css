@@ -840,6 +840,124 @@ footer a:hover {
     }
 }
 
+/* Log History */
+.log-history-container {
+    max-height: 600px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+
+.log-history-placeholder {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+}
+
+.log-history-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.log-history-item:last-child {
+    margin-bottom: 0;
+}
+
+.log-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.log-history-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.log-status {
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.status-running {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+.status-cancelled {
+    background: rgba(251, 146, 60, 0.1);
+    color: #fb923c;
+}
+
+.status-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.trigger-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.trigger-cron {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+
+.trigger-manual {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+.log-history-title .log-timestamp {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.log-history-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.log-history-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.log-meta-item {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.log-meta-item strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-right: 0.25rem;
+}
+
 /* Utility Classes */
 .mt-1 { margin-top: 0.5rem; }
 .mt-2 { margin-top: 1rem; }

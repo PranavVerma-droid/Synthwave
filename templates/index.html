@@ -39,6 +39,10 @@
                     <span class="nav-icon">🐛</span>
                     <span>Debug Logs</span>
                 </a>
+                <a href="#log-history" class="nav-item" onclick="scrollToSection('log-history')">
+                    <span class="nav-icon">📚</span>
+                    <span>Log History</span>
+                </a>
                 <a href="#automation" class="nav-item" onclick="scrollToSection('automation')">
                     <span class="nav-icon">⏰</span>
                     <span>Automation</span>
@@ -229,6 +233,25 @@
                             <div class="log-entry log-info">
                                 <span class="log-timestamp">[Ready]</span>
                                 <span class="log-message">Debug mode active. yt-dlp output will appear here...</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Log History Section -->
+                <section id="log-history">
+                    <div class="section-header">
+                        <h2><span>📚</span> Download History</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="logs-controls">
+                            <button onclick="loadLogHistory()" class="btn btn-primary">
+                                🔄 Refresh History
+                            </button>
+                        </div>
+                        <div id="log-history-container" class="log-history-container">
+                            <div class="log-history-placeholder">
+                                <p>Loading download history...</p>
                             </div>
                         </div>
                     </div>

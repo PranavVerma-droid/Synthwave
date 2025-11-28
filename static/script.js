@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSocketListeners();
     updateCronUI();
     updateConnectionStatus();
+    loadLogHistory();
     
     // Attach debug mode change listener
     const debugModeSelect = document.getElementById('debug_mode');
@@ -674,6 +675,132 @@ function applyCronPreset(minute, hour, day, month, dayOfWeek) {
     
     closeCronModal();
     showNotification('Preset applied! Click "Update Schedule" to save.', 'info');
+}
+
+// Log History Management
+async function loadLogHistory() {
+    try {
+        const response = await fetch('/api/log-history');
+        const data = await response.json();
+        
+        if (data.success) {
+            updateLogHistoryDisplay(data.logs);
+        } else {
+            showNotification('Failed to load log history: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error loading log history: ' + error.message, 'error');
+        console.error('Load log history error:', error);
+    }
+}
+
+function updateLogHistoryDisplay(logs) {
+    const container = document.getElementById('log-history-container');
+    
+    if (!logs || logs.length === 0) {
+        container.innerHTML = '<div class="log-history-placeholder"><p>No download history available</p></div>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    logs.forEach(log => {
+        const logItem = document.createElement('div');
+        logItem.className = 'log-history-item';
+        
+        const statusClass = log.status === 'completed' ? 'status-completed' : 
+                           log.status === 'running' ? 'status-running' : 
+                           log.status === 'cancelled' ? 'status-cancelled' : 
+                           'status-error';
+        
+        const triggerBadge = log.trigger_type === 'cron' ? 
+            '<span class="trigger-badge trigger-cron">🕐 Cron</span>' : 
+            '<span class="trigger-badge trigger-manual">👤 Manual</span>';
+        
+        const completedTime = log.completed_at ? 
+            `<div class="log-meta-item"><strong>Completed:</strong> ${formatCronDate(log.completed_at)}</div>` : '';
+        
+        logItem.innerHTML = `
+            <div class="log-history-header">
+                <div class="log-history-title">
+                    <span class="log-status ${statusClass}">${log.status.toUpperCase()}</span>
+                    ${triggerBadge}
+                    <span class="log-timestamp">${formatCronDate(log.timestamp)}</span>
+                </div>
+                <div class="log-history-actions">
+                    <button onclick="downloadLogFile('${log.filename}')" class="btn btn-sm btn-secondary">
+                        📥 Download
+                    </button>
+                    <button onclick="deleteLogFile('${log.filename}')" class="btn btn-sm btn-danger">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+            <div class="log-history-meta">
+                <div class="log-meta-item">
+                    <strong>Playlists:</strong> ${log.playlists_processed || 0}
+                </div>
+                <div class="log-meta-item">
+                    <strong>Songs:</strong> ${log.songs_downloaded || 0}
+                </div>
+                <div class="log-meta-item">
+                    <strong>Errors:</strong> ${log.errors || 0}
+                </div>
+                ${completedTime}
+            </div>
+        `;
+        
+        container.appendChild(logItem);
+    });
+}
+
+async function downloadLogFile(filename) {
+    try {
+        const response = await fetch(`/api/log-history/${filename}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to download log file');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showNotification('Log file downloaded successfully', 'success');
+    } catch (error) {
+        showNotification('Error downloading log file: ' + error.message, 'error');
+        console.error('Download log file error:', error);
+    }
+}
+
+async function deleteLogFile(filename) {
+    if (!confirm(`Are you sure you want to delete log file "${filename}"? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/log-history/${filename}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Log file deleted successfully', 'success');
+            loadLogHistory(); // Reload the log history
+        } else {
+            showNotification('Failed to delete log file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('Error deleting log file: ' + error.message, 'error');
+        console.error('Delete log file error:', error);
+    }
 }
 
 // Utility Functions
