@@ -1,11 +1,13 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies including Node.js 20+
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     imagemagick \
     findutils \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

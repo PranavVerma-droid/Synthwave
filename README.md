@@ -36,6 +36,9 @@ http://your-server-url:5000
 ### Manual Installation
 
 ```bash
+# Dependencies
+sudo apt-get install nodejs npm ffmpeg imagemagick findutils python3 python3-pip
+
 # Clone the repository
 git clone https://github.com/PranavVerma-droid/Synthwave.git
 cd Synthwave
