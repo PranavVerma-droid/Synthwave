@@ -25,7 +25,7 @@ git clone https://github.com/PranavVerma-droid/Synthwave.git
 cd Synthwave/docker
 cp .env.example .env
 
-docker compose -f docker-compose-dev.yml up --build
+docker compose -f docker-compose-dev.yml up --build -d
 ```
 
 Then visit:
@@ -67,7 +67,7 @@ python app.py
 
 ## ⚙️ Configuration
 
-The application configuration is stored in `config/config.json` and can be edited through the web interface or directly in the file.
+The application configuration is stored in `config/config.yaml` and can be edited through the web interface or directly in the file.
 
 ### Configuration Options
 
@@ -86,7 +86,7 @@ The application configuration is stored in `config/config.json` and can be edite
 | **CRON_SCHEDULE** | Cron expression for scheduled downloads | `{"minute": "0", "hour": "2", ...}` | See below |
 
 ## Schema
-- The Config For this app is created in the `config/config.json` file AFTER the first run.
+- The Config For this app is created in the `config/config.yaml` file AFTER the first run.
 - You can edit the config via the web panel or just by editing the file.
 
 ### Technical Working

@@ -3,3 +3,4 @@ Flask-SocketIO
 eventlet
 apscheduler
 yt-dlp
+PyYAML

@@ -8,6 +8,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_socketio import SocketIO, emit
 import os
 import json
+import yaml
 import subprocess
 import threading
 import time
@@ -44,7 +45,7 @@ scheduler.start()
 SCRIPT_DIR = Path(__file__).parent.absolute()
 CONFIG_DIR = SCRIPT_DIR / "config"
 LOGS_DIR = SCRIPT_DIR / "logs"
-CONFIG_FILE = CONFIG_DIR / "config.json"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 # Ensure directories exist
 CONFIG_DIR.mkdir(exist_ok=True)
@@ -88,7 +89,7 @@ download_status = {
 
 
 def load_config():
-    """Load configuration from JSON file"""
+    """Load configuration from YAML file"""
     if CONFIG_FILE.exists():
         max_retries = 3
         for attempt in range(max_retries):
@@ -107,7 +108,7 @@ def load_config():
                                 logger.error("Config file empty after retries, using defaults")
                                 return DEFAULT_CONFIG.copy()
                         
-                        config = json.loads(content)
+                        config = yaml.safe_load(content)
                         
                         # Validate config has required keys
                         if not isinstance(config, dict) or 'BASE_FOLDER' not in config:
@@ -123,8 +124,8 @@ def load_config():
                     finally:
                         # Release lock
                         fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error in config file (attempt {attempt + 1}/{max_retries}): {str(e)}")
+            except yaml.YAMLError as e:
+                logger.error(f"YAML parse error in config file (attempt {attempt + 1}/{max_retries}): {str(e)}")
                 if attempt < max_retries - 1:
                     time.sleep(0.1)
                     continue
@@ -143,20 +144,20 @@ def load_config():
 
 
 def save_config(config):
-    """Save configuration to JSON file using atomic write"""
+    """Save configuration to YAML file using atomic write"""
     max_retries = 5
     retry_delay = 0.1
     
     for attempt in range(max_retries):
         try:
             # Write to temporary file first (in same directory to avoid cross-device issues)
-            temp_fd, temp_path = tempfile.mkstemp(dir=CONFIG_DIR, prefix='.config_', suffix='.json.tmp')
+            temp_fd, temp_path = tempfile.mkstemp(dir=CONFIG_DIR, prefix='.config_', suffix='.yaml.tmp')
             try:
                 with os.fdopen(temp_fd, 'w') as f:
                     # Acquire exclusive lock for writing
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                     try:
-                        json.dump(config, f, indent=2)
+                        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
                         f.flush()
                         os.fsync(f.fileno())  # Ensure data is written to disk
                     finally:
@@ -182,7 +183,7 @@ def save_config(config):
                             with open(CONFIG_FILE, 'w') as f:
                                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                                 try:
-                                    json.dump(config, f, indent=2)
+                                    yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
                                     f.flush()
                                     os.fsync(f.fileno())
                                 finally:
