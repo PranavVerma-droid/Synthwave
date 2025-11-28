@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCronUI();
     updateConnectionStatus();
     loadLogHistory();
+    setupMobileMenu();
     
     // Attach debug mode change listener
     const debugModeSelect = document.getElementById('debug_mode');
@@ -916,3 +917,68 @@ document.getElementById('cron-modal')?.addEventListener('click', function(e) {
         closeCronModal();
     }
 });
+
+// Mobile Menu Functions
+function setupMobileMenu() {
+    const hamburger = document.querySelector('.hamburger');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    const navItems = document.querySelectorAll('.nav-item');
+    
+    if (!hamburger || !sidebar || !overlay) return;
+    
+    // Toggle menu
+    hamburger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleMobileMenu();
+    });
+    
+    // Close menu when clicking overlay
+    overlay.addEventListener('click', function() {
+        closeMobileMenu();
+    });
+    
+    // Close menu when clicking nav items
+    navItems.forEach(item => {
+        item.addEventListener('click', function() {
+            if (window.innerWidth <= 1024) {
+                closeMobileMenu();
+            }
+        });
+    });
+    
+    // Close menu on window resize if too large
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 1024) {
+            closeMobileMenu();
+        }
+    });
+}
+
+function toggleMobileMenu() {
+    const hamburger = document.querySelector('.hamburger');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    
+    hamburger.classList.toggle('active');
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+    
+    // Prevent body scroll when menu is open
+    if (sidebar.classList.contains('active')) {
+        document.body.style.overflow = 'hidden';
+    } else {
+        document.body.style.overflow = '';
+    }
+}
+
+function closeMobileMenu() {
+    const hamburger = document.querySelector('.hamburger');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    
+    hamburger.classList.remove('active');
+    sidebar.classList.remove('active');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
