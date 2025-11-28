@@ -2,5 +2,5 @@ Flask
 Flask-SocketIO
 eventlet
 apscheduler
-yt-dlp
+yt-dlp[default]
 PyYAML

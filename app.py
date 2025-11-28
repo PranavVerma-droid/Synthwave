@@ -480,7 +480,11 @@ def get_ytdlp_opts(config, output_template, extra_opts=None):
         'logger': YtdlpLogger(debug_mode),
         'no_warnings': not debug_mode,
         'quiet': not debug_mode,
+        'verbose': True,
         'no_color': True,
+        "js_runtimes": {
+            "node": {},
+        }
     }
     
     if extra_opts:
@@ -914,7 +918,7 @@ def download_worker():
             
             try:
                 result = subprocess.run(
-                    ["pip", "install", "--upgrade", "yt-dlp"],
+                    ["pip", "install", "--upgrade", "yt-dlp[default]"],
                     capture_output=True,
                     text=True,
                     timeout=60
