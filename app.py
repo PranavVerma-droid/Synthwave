@@ -538,6 +538,7 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
             'EmbedThumbnail': ['-c:v', 'png', '-vf', 'crop="if(gt(ih,iw),iw,ih)":"if(gt(iw,ih),ih,iw)"']
         },
         'overwrites': False,
+        'ignoreerrors': False,  # Don't ignore errors during actual download
     })
     
     for attempt in range(max_retries):
@@ -546,6 +547,18 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([video_url])
             return True
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            # Check if it's a permanent error (video unavailable, copyright claim, etc.)
+            if any(keyword in error_msg.lower() for keyword in ['unavailable', 'copyright', 'removed', 'deleted', 'private']):
+                log_message(f"Video permanently unavailable: {error_msg}", "error")
+                return False  # Don't retry for permanent errors
+            elif attempt < max_retries - 1:
+                log_message(f"Download failed: {error_msg}, retrying...", "warning")
+                time.sleep(5)
+            else:
+                log_message(f"Download failed after {max_retries} attempts: {error_msg}", "error")
+                return False
         except Exception as e:
             if attempt < max_retries - 1:
                 log_message(f"Download failed: {str(e)}, retrying...", "warning")
@@ -669,14 +682,15 @@ def process_playlist(playlist_url, config):
     
     log_message(f"Processing: {playlist_url}", "info")
     
-    # Get playlist metadata with retry
+    # Get playlist metadata with retry - use extract_flat to avoid failing on single unavailable videos
     playlist_name = None
     for attempt in range(max_retries):
         try:
             log_message(f"Fetching playlist metadata (attempt {attempt + 1}/{max_retries})...", "info")
             ydl_opts = get_ytdlp_opts(config, '', {
                 'skip_download': True,
-                'extract_flat': False,
+                'extract_flat': 'in_playlist',
+                'ignoreerrors': True,
             })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -737,12 +751,14 @@ def process_playlist(playlist_url, config):
                 'skip_download': True,
                 'extract_flat': 'in_playlist',
                 'quiet': True,
+                'ignoreerrors': True,
             })
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(playlist_url, download=False)
                 
                 if 'entries' in info:
+                    unavailable_count = 0
                     for idx, entry in enumerate(info['entries'], 1):
                         if entry:
                             song_list.append({
@@ -750,6 +766,11 @@ def process_playlist(playlist_url, config):
                                 'title': entry.get('title', 'Unknown'),
                                 'video_id': entry.get('id', '')
                             })
+                        else:
+                            unavailable_count += 1
+                    
+                    if unavailable_count > 0:
+                        log_message(f"Skipped {unavailable_count} unavailable video(s) in playlist", "warning")
             
             if song_list:
                 break
@@ -762,11 +783,7 @@ def process_playlist(playlist_url, config):
                 return {'songs_downloaded': 0, 'errors': 1}
     
     if not song_list:
-        log_message("Failed to retrieve song list, skipping...", "error")
-        return {'songs_downloaded': 0, 'errors': 1}
-    
-    if not song_list:
-        log_message("Failed to retrieve song list, skipping...", "error")
+        log_message("No available songs found in playlist", "warning")
         return {'songs_downloaded': 0, 'errors': 1}
     
     total_songs = len(song_list)
@@ -802,6 +819,12 @@ def process_playlist(playlist_url, config):
         
         video_id = song['video_id']
         title = song['title']
+        
+        # Skip if video_id is missing or invalid
+        if not video_id:
+            log_message(f"[{idx}/{total_songs}] Skipping song with missing video ID: {title}", "warning")
+            errors += 1
+            continue
         
         download_status["current_song"] = f"{title} ({idx}/{total_songs})"
         download_status["progress"] = idx
