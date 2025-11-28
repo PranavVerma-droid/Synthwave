@@ -2,3 +2,4 @@ Flask
 Flask-SocketIO
 eventlet
 apscheduler
+yt-dlp

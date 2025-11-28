@@ -20,6 +20,7 @@ from apscheduler.triggers.cron import CronTrigger
 import logging
 import fcntl
 import tempfile
+import yt_dlp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -51,7 +52,6 @@ LOGS_DIR.mkdir(exist_ok=True)
 
 DEFAULT_CONFIG = {
     "BASE_FOLDER": "/music",
-    "DOWNLOADER_PATH": "/binary/yt-dlp",
     "RECORD_FILE_NAME": ".downloaded_videos.txt",
     "PARALLEL_LIMIT": 4,
     "PLAYLIST_M3U_FOLDER": "/playlists",
@@ -446,103 +446,116 @@ def update_song_metadata(song_file, album_name, track_number):
         return False
 
 
-def run_command_with_retry(cmd, timeout=60, max_retries=3, retry_delay=5, config=None):
-    """Run command with retry logic"""
-    if config is None:
-        config = load_config()
+class YtdlpLogger:
+    """Custom logger for yt-dlp to capture output"""
+    def __init__(self, debug_mode=False):
+        self.debug_mode = debug_mode
     
+    def debug(self, msg):
+        if self.debug_mode and msg:
+            log_message(msg, "info", is_debug=True)
+    
+    def info(self, msg):
+        if msg:
+            log_message(msg, "info", is_debug=self.debug_mode)
+    
+    def warning(self, msg):
+        if msg:
+            log_message(msg, "warning", is_debug=self.debug_mode)
+    
+    def error(self, msg):
+        if msg:
+            log_message(msg, "error")
+
+
+def get_ytdlp_opts(config, output_template, extra_opts=None):
+    """Get base yt-dlp options"""
     debug_mode = config.get("DEBUG_MODE", False)
     
-    for attempt in range(max_retries):
-        try:
-            log_message(f"Running command (attempt {attempt + 1}/{max_retries})...", "info")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            
-            # Emit debug output if debug mode is enabled
-            if debug_mode and result:
-                if result.stdout:
-                    for line in result.stdout.split('\n'):
-                        if line.strip():
-                            log_message(line.strip(), "info", is_debug=True)
-                if result.stderr:
-                    for line in result.stderr.split('\n'):
-                        if line.strip():
-                            log_message(line.strip(), "info", is_debug=True)
-            
-            return result
-        except subprocess.TimeoutExpired:
-            if attempt < max_retries - 1:
-                log_message(f"Command timed out, retrying in {retry_delay}s...", "warning")
-                time.sleep(retry_delay)
-            else:
-                log_message(f"Command timed out after {max_retries} attempts", "error")
-                raise
-        except Exception as e:
-            if attempt < max_retries - 1:
-                log_message(f"Command failed: {str(e)}, retrying in {retry_delay}s...", "warning")
-                time.sleep(retry_delay)
-            else:
-                raise
-    return None
+    opts = {
+        'outtmpl': output_template,
+        'format': 'bestaudio[ext=m4a]/best',
+        'writethumbnail': True,
+        'logger': YtdlpLogger(debug_mode),
+        'no_warnings': not debug_mode,
+        'quiet': not debug_mode,
+        'no_color': True,
+    }
+    
+    if extra_opts:
+        opts.update(extra_opts)
+    
+    return opts
 
 
 def download_song(video_url, video_id, target_folder, album_name=None, track_number=None, config=None):
-    """Download a single song"""
+    """Download a single song using yt-dlp Python library"""
     if config is None:
         config = load_config()
     
-    downloader = config["DOWNLOADER_PATH"]
-    timeout_download = config.get("TIMEOUT_DOWNLOAD", 600)
     max_retries = config.get("MAX_RETRIES", 3)
-    
     output_template = f"{target_folder}/%(artist)s - %(title)s - {video_id}.%(ext)s"
     
-    cmd = [
-        downloader, "-o", output_template,
-        "--js-runtimes", "node",
-        "--verbose",
-        "--format", "bestaudio[ext=m4a]/best",
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",
-        "--embed-thumbnail",
-        "--convert-thumbnail", "png",
-        "--add-metadata",
-        "--parse-metadata", "%(title)s:%(meta_title)s",
-        "--parse-metadata", "%(artist)s:%(meta_artist)s",
-        "--no-overwrites",
-        video_url
+    # Build postprocessor args
+    postprocessors = [
+        {
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '0',
+        },
+        {
+            'key': 'FFmpegMetadata',
+            'add_metadata': True,
+        },
+        {
+            'key': 'EmbedThumbnail',
+            'already_have_thumbnail': False,
+        }
+    ]
+    
+    # Parse metadata options
+    parse_metadata = [
+        'title:%(meta_title)s',
+        'artist:%(meta_artist)s',
     ]
     
     if album_name:
-        cmd.extend(["--parse-metadata", f"{album_name}:%(meta_album)s"])
+        parse_metadata.append(f'{album_name}:%(meta_album)s')
         if track_number:
-            cmd.extend(["--parse-metadata", f"{track_number}:%(meta_track)s"])
-            cmd.extend(["--ppa", "EmbedThumbnail+ffmpeg_o:-c:v png -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
+            parse_metadata.append(f'{track_number}:%(meta_track)s')
     else:
-        cmd.extend(["--parse-metadata", "Unsorted Songs:%(meta_album)s"])
-        cmd.extend(["--ppa", "EmbedThumbnail+ffmpeg_o:-c:v png -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
+        parse_metadata.append('Unsorted Songs:%(meta_album)s')
     
-    try:
-        result = run_command_with_retry(cmd, timeout=timeout_download, max_retries=max_retries, config=config)
-        return result and result.returncode == 0
-    except Exception as e:
-        log_message(f"Download failed: {str(e)}", "error")
-        return False
+    ydl_opts = get_ytdlp_opts(config, output_template, {
+        'postprocessors': postprocessors,
+        'parse_metadata': parse_metadata,
+        'postprocessor_args': {
+            'EmbedThumbnail': ['-c:v', 'png', '-vf', 'crop="if(gt(ih,iw),iw,ih)":"if(gt(iw,ih),ih,iw)"']
+        },
+        'overwrites': False,
+    })
+    
+    for attempt in range(max_retries):
+        try:
+            log_message(f"Downloading (attempt {attempt + 1}/{max_retries})...", "info")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_url])
+            return True
+        except Exception as e:
+            if attempt < max_retries - 1:
+                log_message(f"Download failed: {str(e)}, retrying...", "warning")
+                time.sleep(5)
+            else:
+                log_message(f"Download failed after {max_retries} attempts: {str(e)}", "error")
+                return False
+    
+    return False
 
 
 def download_album_artwork(album_url, album_folder, config=None):
-    """Download album artwork"""
+    """Download album artwork using yt-dlp Python library"""
     if config is None:
         config = load_config()
-    
-    downloader = config["DOWNLOADER_PATH"]
-    timeout_metadata = config.get("TIMEOUT_METADATA", 120)
     
     artwork_file = os.path.join(album_folder, "folder.png")
     
@@ -555,42 +568,41 @@ def download_album_artwork(album_url, album_folder, config=None):
         file.unlink()
     
     try:
-        cmd = [
-            downloader,
-            "--js-runtimes", "node",
-            "--verbose",
-            "--write-thumbnail",
-            "--convert-thumbnails", "png",
-            "--skip-download",
-            "-o", f"{album_folder}/folder.%(ext)s",
-            album_url
-        ]
+        output_template = f"{album_folder}/folder.%(ext)s"
+        ydl_opts = get_ytdlp_opts(config, output_template, {
+            'writethumbnail': True,
+            'skip_download': True,
+            'postprocessors': [{
+                'key': 'FFmpegThumbnailsConvertor',
+                'format': 'png',
+            }],
+        })
         
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout_metadata)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([album_url])
         
-        if result.returncode == 0:
-            # Clean up non-png files
-            for file in Path(album_folder).glob("folder.*"):
-                if file.suffix != ".png":
-                    file.unlink()
+        # Clean up non-png files
+        for file in Path(album_folder).glob("folder.*"):
+            if file.suffix != ".png":
+                file.unlink()
+        
+        # Crop to square if ImageMagick is available
+        try:
+            subprocess.run([
+                "convert", artwork_file,
+                "-gravity", "center",
+                "-crop", "1:1",
+                "+repage",
+                f"{artwork_file}.tmp"
+            ], timeout=30)
             
-            # Crop to square if ImageMagick is available
-            try:
-                subprocess.run([
-                    "convert", artwork_file,
-                    "-gravity", "center",
-                    "-crop", "1:1",
-                    "+repage",
-                    f"{artwork_file}.tmp"
-                ], timeout=30)
-                
-                if os.path.exists(f"{artwork_file}.tmp"):
-                    os.replace(f"{artwork_file}.tmp", artwork_file)
-                    log_message("Album artwork cropped to square", "success")
-            except:
-                log_message("Keeping original aspect ratio", "info")
-            
-            return True
+            if os.path.exists(f"{artwork_file}.tmp"):
+                os.replace(f"{artwork_file}.tmp", artwork_file)
+                log_message("Album artwork cropped to square", "success")
+        except:
+            log_message("Keeping original aspect ratio", "info")
+        
+        return True
     except Exception as e:
         log_message(f"Failed to download album artwork: {str(e)}", "error")
     
@@ -637,15 +649,13 @@ def generate_m3u_playlist(playlist_name, playlist_url, song_list, config):
 
 
 def process_playlist(playlist_url, config):
-    """Process a single playlist or album"""
+    """Process a single playlist or album using yt-dlp Python library"""
     # Check for cancellation at the start
     if download_status["cancel_requested"]:
         log_message("Playlist processing cancelled before start", "warning")
         return {'songs_downloaded': 0, 'errors': 0}
     
-    downloader = config["DOWNLOADER_PATH"]
     base_folder = config["BASE_FOLDER"]
-    timeout_metadata = config.get("TIMEOUT_METADATA", 120)
     max_retries = config.get("MAX_RETRIES", 3)
     
     # Track statistics
@@ -654,27 +664,29 @@ def process_playlist(playlist_url, config):
     
     log_message(f"Processing: {playlist_url}", "info")
     
-    # Get playlist name with retry
-    try:
-        log_message("Fetching playlist metadata...", "info")
-        result = run_command_with_retry(
-            [downloader, "--js-runtimes", "node", "--verbose", "--print", "%(playlist_title)s", playlist_url],
-            timeout=timeout_metadata * 2,  # Double timeout for initial metadata fetch
-            max_retries=max_retries
-        )
-        
-        if result and result.stdout:
-            playlist_name = result.stdout.strip().split('\n')[0]
-        else:
-            log_message("Failed to fetch playlist title (empty response)", "error")
-            return {'songs_downloaded': 0, 'errors': 1}
+    # Get playlist metadata with retry
+    playlist_name = None
+    for attempt in range(max_retries):
+        try:
+            log_message(f"Fetching playlist metadata (attempt {attempt + 1}/{max_retries})...", "info")
+            ydl_opts = get_ytdlp_opts(config, '', {
+                'skip_download': True,
+                'extract_flat': False,
+            })
             
-    except subprocess.TimeoutExpired:
-        log_message(f"Failed to fetch playlist title: timeout after {timeout_metadata * 2}s (large playlists may need more time)", "error")
-        return {'songs_downloaded': 0, 'errors': 1}
-    except Exception as e:
-        log_message(f"Failed to fetch playlist title: {str(e)}", "error")
-        return {'songs_downloaded': 0, 'errors': 1}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+                playlist_name = info.get('title', info.get('playlist_title', ''))
+            
+            if playlist_name:
+                break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                log_message(f"Failed to fetch playlist metadata: {str(e)}, retrying...", "warning")
+                time.sleep(5)
+            else:
+                log_message(f"Failed to fetch playlist title after {max_retries} attempts: {str(e)}", "error")
+                return {'songs_downloaded': 0, 'errors': 1}
     
     if not playlist_name:
         log_message("Failed to fetch playlist title, skipping...", "error")
@@ -712,44 +724,45 @@ def process_playlist(playlist_url, config):
     log_message(f"Folder: {target_folder}", "info")
     
     # Get song list with retry
-    try:
-        log_message("Fetching song list (this may take a while for large playlists)...", "info")
-        # For large playlists, this can take a very long time - use extended timeout
-        # Use tab delimiter to avoid issues with colons and other special chars in titles
-        result = run_command_with_retry(
-            [downloader, "--js-runtimes", "node", "--verbose", "--flat-playlist", "--print", "%(playlist_index)s\t%(title)s\t%(id)s", playlist_url],
-            timeout=timeout_metadata * 3,  # Triple timeout for song list fetching
-            max_retries=max_retries
-        )
-        
-        if result and result.stdout:
-            song_lines = result.stdout.strip().split('\n')
-        else:
-            log_message("Failed to retrieve song list (empty response)", "error")
-            return {'songs_downloaded': 0, 'errors': 1}
+    song_list = []
+    for attempt in range(max_retries):
+        try:
+            log_message(f"Fetching song list (attempt {attempt + 1}/{max_retries}, this may take a while for large playlists)...", "info")
+            ydl_opts = get_ytdlp_opts(config, '', {
+                'skip_download': True,
+                'extract_flat': 'in_playlist',
+                'quiet': True,
+            })
             
-    except subprocess.TimeoutExpired:
-        log_message(f"Failed to retrieve song list: timeout after {timeout_metadata * 3}s (playlist may have too many tracks or network is slow)", "error")
-        return {'songs_downloaded': 0, 'errors': 1}
-    except Exception as e:
-        log_message(f"Failed to retrieve song list: {str(e)}", "error")
-        return {'songs_downloaded': 0, 'errors': 1}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+                
+                if 'entries' in info:
+                    for idx, entry in enumerate(info['entries'], 1):
+                        if entry:
+                            song_list.append({
+                                'index': str(idx),
+                                'title': entry.get('title', 'Unknown'),
+                                'video_id': entry.get('id', '')
+                            })
+            
+            if song_list:
+                break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                log_message(f"Failed to retrieve song list: {str(e)}, retrying...", "warning")
+                time.sleep(5)
+            else:
+                log_message(f"Failed to retrieve song list after {max_retries} attempts: {str(e)}", "error")
+                return {'songs_downloaded': 0, 'errors': 1}
     
-    if not song_lines or not song_lines[0]:
+    if not song_list:
         log_message("Failed to retrieve song list, skipping...", "error")
         return {'songs_downloaded': 0, 'errors': 1}
     
-    song_list = []
-    for line in song_lines:
-        # Split by tab delimiter (more reliable than colon for titles with special chars)
-        # Format is: index\ttitle\tvideo_id
-        parts = line.split('\t')
-        if len(parts) == 3:
-            song_list.append({
-                'index': parts[0],
-                'title': parts[1],
-                'video_id': parts[2]
-            })
+    if not song_list:
+        log_message("Failed to retrieve song list, skipping...", "error")
+        return {'songs_downloaded': 0, 'errors': 1}
     
     total_songs = len(song_list)
     log_message(f"Found {total_songs} songs", "success")
@@ -886,28 +899,29 @@ def download_worker():
             download_status["current_song"] = None
             download_status["cancel_requested"] = False
             
-            # Update downloader
-            log_message("Updating downloader...", "info")
+            # Update yt-dlp package
+            log_message("Updating yt-dlp...", "info")
             try:
                 socketio.emit('progress', {
                     'current': 0,
                     'total': 0,
                     'playlist': 'System',
-                    'song': 'Updating downloader...'
+                    'song': 'Updating yt-dlp...'
                 }, namespace='/')
             except Exception as e:
                 logger.error(f"Failed to emit progress: {str(e)}")
             
             try:
                 result = subprocess.run(
-                    [config["DOWNLOADER_PATH"], "--js-runtimes", "node", "--verbose", "-U"],
+                    ["pip", "install", "--upgrade", "yt-dlp"],
                     capture_output=True,
+                    text=True,
                     timeout=60
                 )
                 if result.returncode == 0:
-                    log_message("Downloader updated successfully", "success")
+                    log_message("yt-dlp updated successfully", "success")
                 else:
-                    log_message("Failed to update downloader", "warning")
+                    log_message(f"Failed to update yt-dlp: {result.stderr}", "warning")
                     errors += 1
             except Exception as e:
                 log_message(f"Update check failed: {str(e)}", "warning")
@@ -1017,7 +1031,7 @@ def api_config():
         data = request.json
         
         # Update configuration
-        for key in ['BASE_FOLDER', 'DOWNLOADER_PATH', 'RECORD_FILE_NAME', 
+        for key in ['BASE_FOLDER', 'RECORD_FILE_NAME', 
                     'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE']:
             if key in data:
                 config[key] = data[key]

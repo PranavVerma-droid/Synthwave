@@ -127,7 +127,6 @@ async function loadConfig() {
 async function saveConfig() {
     const config = {
         BASE_FOLDER: document.getElementById('base_folder').value,
-        DOWNLOADER_PATH: document.getElementById('downloader_path').value,
         PLAYLIST_M3U_FOLDER: document.getElementById('playlist_m3u_folder').value,
         MUSIC_MOUNT_PATH: document.getElementById('music_mount_path').value,
         PARALLEL_LIMIT: parseInt(document.getElementById('parallel_limit').value),
