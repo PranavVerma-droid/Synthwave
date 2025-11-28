@@ -623,12 +623,16 @@ def process_playlist(playlist_url, config):
     # Check for cancellation at the start
     if download_status["cancel_requested"]:
         log_message("Playlist processing cancelled before start", "warning")
-        return
+        return {'songs_downloaded': 0, 'errors': 0}
     
     downloader = config["DOWNLOADER_PATH"]
     base_folder = config["BASE_FOLDER"]
     timeout_metadata = config.get("TIMEOUT_METADATA", 120)
     max_retries = config.get("MAX_RETRIES", 3)
+    
+    # Track statistics
+    songs_downloaded = 0
+    errors = 0
     
     log_message(f"Processing: {playlist_url}", "info")
     
@@ -645,18 +649,18 @@ def process_playlist(playlist_url, config):
             playlist_name = result.stdout.strip().split('\n')[0]
         else:
             log_message("Failed to fetch playlist title (empty response)", "error")
-            return
+            return {'songs_downloaded': 0, 'errors': 1}
             
     except subprocess.TimeoutExpired:
         log_message(f"Failed to fetch playlist title: timeout after {timeout_metadata * 2}s (large playlists may need more time)", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     except Exception as e:
         log_message(f"Failed to fetch playlist title: {str(e)}", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     
     if not playlist_name:
         log_message("Failed to fetch playlist title, skipping...", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     
     # Clean playlist name
     if is_album_url(playlist_url):
@@ -704,18 +708,18 @@ def process_playlist(playlist_url, config):
             song_lines = result.stdout.strip().split('\n')
         else:
             log_message("Failed to retrieve song list (empty response)", "error")
-            return
+            return {'songs_downloaded': 0, 'errors': 1}
             
     except subprocess.TimeoutExpired:
         log_message(f"Failed to retrieve song list: timeout after {timeout_metadata * 3}s (playlist may have too many tracks or network is slow)", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     except Exception as e:
         log_message(f"Failed to retrieve song list: {str(e)}", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     
     if not song_lines or not song_lines[0]:
         log_message("Failed to retrieve song list, skipping...", "error")
-        return
+        return {'songs_downloaded': 0, 'errors': 1}
     
     song_list = []
     for line in song_lines:
@@ -735,7 +739,7 @@ def process_playlist(playlist_url, config):
     # Check for cancellation before starting downloads
     if download_status["cancel_requested"]:
         log_message("Playlist processing cancelled before downloads", "warning")
-        return
+        return {'songs_downloaded': 0, 'errors': 0}
     
     download_status["total"] = total_songs
     download_status["progress"] = 0
@@ -758,7 +762,7 @@ def process_playlist(playlist_url, config):
         # Check for cancellation
         if download_status["cancel_requested"]:
             log_message("Cancelling playlist processing...", "warning")
-            return
+            return {'songs_downloaded': songs_downloaded, 'errors': errors}
         
         video_id = song['video_id']
         title = song['title']
@@ -813,10 +817,12 @@ def process_playlist(playlist_url, config):
             
             if success:
                 log_message("Downloaded successfully", "success")
+                songs_downloaded += 1
                 with open(record_file, 'a') as f:
                     f.write(f"{video_id}\n")
             else:
                 log_message("Download failed", "error")
+                errors += 1
     
     # Download album artwork if it's an album
     if is_album_url(playlist_url):
@@ -824,6 +830,8 @@ def process_playlist(playlist_url, config):
     
     # Generate M3U playlist
     generate_m3u_playlist(playlist_name, playlist_url, song_list, config)
+    
+    return {'songs_downloaded': songs_downloaded, 'errors': errors}
 
 
 def download_worker():
@@ -899,8 +907,10 @@ def download_worker():
                         log_message("Download cancelled by user", "warning")
                         break
                     try:
-                        process_playlist(url, config)
+                        stats = process_playlist(url, config)
                         playlists_processed += 1
+                        songs_downloaded += stats.get('songs_downloaded', 0)
+                        errors += stats.get('errors', 0)
                     except Exception as e:
                         log_message(f"Error processing album: {str(e)}", "error")
                         errors += 1
@@ -913,8 +923,10 @@ def download_worker():
                         log_message("Download cancelled by user", "warning")
                         break
                     try:
-                        process_playlist(url, config)
+                        stats = process_playlist(url, config)
                         playlists_processed += 1
+                        songs_downloaded += stats.get('songs_downloaded', 0)
+                        errors += stats.get('errors', 0)
                     except Exception as e:
                         log_message(f"Error processing playlist: {str(e)}", "error")
                         errors += 1
