@@ -693,8 +693,9 @@ def process_playlist(playlist_url, config):
     try:
         log_message("Fetching song list (this may take a while for large playlists)...", "info")
         # For large playlists, this can take a very long time - use extended timeout
+        # Use tab delimiter to avoid issues with colons and other special chars in titles
         result = run_command_with_retry(
-            [downloader, "--flat-playlist", "--print", "%(playlist_index)s:%(title)s:%(id)s", playlist_url],
+            [downloader, "--flat-playlist", "--print", "%(playlist_index)s\t%(title)s\t%(id)s", playlist_url],
             timeout=timeout_metadata * 3,  # Triple timeout for song list fetching
             max_retries=max_retries
         )
@@ -718,7 +719,9 @@ def process_playlist(playlist_url, config):
     
     song_list = []
     for line in song_lines:
-        parts = line.split(':', 2)
+        # Split by tab delimiter (more reliable than colon for titles with special chars)
+        # Format is: index\ttitle\tvideo_id
+        parts = line.split('\t')
         if len(parts) == 3:
             song_list.append({
                 'index': parts[0],
