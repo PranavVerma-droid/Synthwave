@@ -91,27 +91,6 @@ PLAYLIST_M3U_FOLDER/
 - There are also many edge cases that are accounted for, one example:
   - Lets say that there is a song inside the unsorted albums, and before the next run, I added the parent album which it belongs to. It will then MOVE the song from the unsorted album to its album, fix the container metadata, and eventually when it reaches the playlist, update the .m3u.
 
-## 🔧 Development
-
-### Prerequisites
-
-- Python 3.8+
-- Docker & Docker Compose
-- yt-dlp
-- ffmpeg (for metadata handling)
-- ImageMagick (optional, for artwork processing)
-
-### Local Development
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run in development mode
-python app.py
-```
-
-The application will start on `http://localhost:5000` with hot-reload enabled.
 
 ## 📝 License
 

@@ -285,17 +285,31 @@ def create_log_file(trigger_type="manual"):
     
     # Update logs info
     logs_info = load_logs_info()
-    log_entry = {
-        "filename": log_filename,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "trigger_type": trigger_type,  # "manual" or "cron"
-        "status": "running",
-        "playlists_processed": 0,
-        "songs_downloaded": 0,
-        "errors": 0
-    }
-    logs_info["logs"].insert(0, log_entry)  # Add to beginning
-    save_logs_info(logs_info)
+    
+    # Check if this log file already exists in the logs info to prevent duplicates
+    existing_entry = None
+    for log_entry in logs_info["logs"]:
+        if log_entry["filename"] == log_filename:
+            existing_entry = log_entry
+            break
+    
+    if existing_entry is None:
+        # Only create new entry if it doesn't already exist
+        log_entry = {
+            "filename": log_filename,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "trigger_type": trigger_type,  # "manual" or "cron"
+            "status": "running",
+            "playlists_processed": 0,
+            "songs_downloaded": 0,
+            "errors": 0
+        }
+        logs_info["logs"].insert(0, log_entry)  # Add to beginning
+        save_logs_info(logs_info)
+    else:
+        # Update existing entry status to running in case it was left in another state
+        existing_entry["status"] = "running"
+        save_logs_info(logs_info)
     
     # Write header to log file
     header = f"{'='*80}\n"
@@ -844,9 +858,17 @@ def download_worker():
             if task is None:  # Shutdown signal
                 break
             
+            # Double-check that we're not already running to prevent race conditions
+            if download_status["is_running"]:
+                log_message("Download already in progress, skipping duplicate task", "warning")
+                continue
+            
             playlist_urls = task.get('playlists', [])
             trigger_type = task.get('trigger_type', 'manual')
             config = load_config()
+            
+            # Set running status before creating log file
+            download_status["is_running"] = True
             
             # Create log file for this session
             create_log_file(trigger_type)
@@ -1050,7 +1072,6 @@ def start_download():
     if not playlists:
         return jsonify({'success': False, 'error': 'No playlists configured'}), 400
     
-    download_status["is_running"] = True
     download_status["cancel_requested"] = False
     download_status["logs"] = []
     download_queue.put({'playlists': playlists, 'trigger_type': 'manual'})
@@ -1250,7 +1271,6 @@ def scheduled_download():
             log_message("No playlists configured for scheduled download", "warning")
             return
         
-        download_status["is_running"] = True
         download_queue.put({'playlists': playlists, 'trigger_type': 'cron'})
         
         # Update last run time AFTER queuing to minimize race condition window
