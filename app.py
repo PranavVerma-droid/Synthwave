@@ -505,6 +505,7 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
     cmd = [
         downloader, "-o", output_template,
         "--js-runtimes", "node",
+        "--verbose",
         "--format", "bestaudio[ext=m4a]/best",
         "--extract-audio",
         "--audio-format", "mp3",
@@ -557,6 +558,7 @@ def download_album_artwork(album_url, album_folder, config=None):
         cmd = [
             downloader,
             "--js-runtimes", "node",
+            "--verbose",
             "--write-thumbnail",
             "--convert-thumbnails", "png",
             "--skip-download",
@@ -656,7 +658,7 @@ def process_playlist(playlist_url, config):
     try:
         log_message("Fetching playlist metadata...", "info")
         result = run_command_with_retry(
-            [downloader, "--js-runtimes", "node", "--print", "%(playlist_title)s", playlist_url],
+            [downloader, "--js-runtimes", "node", "--verbose", "--print", "%(playlist_title)s", playlist_url],
             timeout=timeout_metadata * 2,  # Double timeout for initial metadata fetch
             max_retries=max_retries
         )
@@ -715,7 +717,7 @@ def process_playlist(playlist_url, config):
         # For large playlists, this can take a very long time - use extended timeout
         # Use tab delimiter to avoid issues with colons and other special chars in titles
         result = run_command_with_retry(
-            [downloader, "--js-runtimes", "node", "--flat-playlist", "--print", "%(playlist_index)s\t%(title)s\t%(id)s", playlist_url],
+            [downloader, "--js-runtimes", "node", "--verbose", "--flat-playlist", "--print", "%(playlist_index)s\t%(title)s\t%(id)s", playlist_url],
             timeout=timeout_metadata * 3,  # Triple timeout for song list fetching
             max_retries=max_retries
         )
@@ -898,7 +900,7 @@ def download_worker():
             
             try:
                 result = subprocess.run(
-                    [config["DOWNLOADER_PATH"], "--js-runtimes", "node", "-U"],
+                    [config["DOWNLOADER_PATH"], "--js-runtimes", "node", "--verbose", "-U"],
                     capture_output=True,
                     timeout=60
                 )
