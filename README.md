@@ -65,8 +65,28 @@ python app.py
 - Individual Videos: `https://www.youtube.com/watch?v=...`
 
 
+## ⚙️ Configuration
+
+The application configuration is stored in `config/config.json` and can be edited through the web interface or directly in the file.
+
+### Configuration Options
+
+| Option | Description | Default | Example |
+|--------|-------------|---------|---------|
+| **BASE_FOLDER** | Root directory where all music files will be downloaded | `/music` | `/data/music` |
+| **RECORD_FILE_NAME** | Hidden file that tracks downloaded video IDs to prevent duplicates | `.downloaded_videos.txt` | `.downloaded.txt` |
+| **PLAYLIST_M3U_FOLDER** | Directory where M3U playlist files will be generated | `/playlists` | `/data/playlists` |
+| **MUSIC_MOUNT_PATH** | Path used in M3U files for media server compatibility (e.g., Gonic) | `/music` | `/music` |
+| **PARALLEL_LIMIT** | Maximum number of concurrent downloads (not currently used) | `4` | `3` |
+| **TIMEOUT_METADATA** | Timeout in seconds for fetching playlist/song metadata | `600` | `300` |
+| **TIMEOUT_DOWNLOAD** | Timeout in seconds for downloading individual songs | `1800` | `900` |
+| **MAX_RETRIES** | Number of retry attempts for failed downloads or metadata fetches | `3` | `5` |
+| **DEBUG_MODE** | Enable verbose logging for troubleshooting | `false` | `true` |
+| **CRON_ENABLED** | Enable scheduled automatic downloads | `false` | `true` |
+| **CRON_SCHEDULE** | Cron expression for scheduled downloads | `{"minute": "0", "hour": "2", ...}` | See below |
+
 ## Schema
-- The Config For this app is created in the [config.json](config.json) File AFTER the first run.
+- The Config For this app is created in the `config/config.json` file AFTER the first run.
 - You can edit the config via the web panel or just by editing the file.
 
 ### Technical Working
