@@ -2,6 +2,8 @@
 
 A self-hosted YouTube Music playlist downloader with a modern web interface, automated scheduling, and Docker support. Download and organize your music playlists with metadata, album artwork, and automatic M3U playlist generation.
 
+Designed to work around [Gonic](https://github.com/sentriz/gonic) (A Subsonic Compatable Music Streaming Server).
+
 ## 🚀 Quick Start
 
 ### Using Docker Compose: Production (Recommended)

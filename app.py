@@ -4,7 +4,7 @@ YouTube Music Playlist Downloader - Professional Self-Hosted Application
 A modern web interface for managing and downloading YouTube music playlists with scheduled automation
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 from flask_socketio import SocketIO, emit
 import os
 import json
@@ -1463,6 +1463,243 @@ def handle_request_debug_logs():
         emit('all_debug_logs', {'debug_logs': download_status["debug_logs"]})
     except Exception as e:
         logger.error(f"Failed to send debug logs: {str(e)}")
+
+
+# File Browser API
+@app.route('/api/files/browse', methods=['GET'])
+def browse_files():
+    """Browse files and folders in the base directory"""
+    try:
+        config = load_config()
+        base_folder = config.get('BASE_FOLDER', '/music')
+        relative_path = request.args.get('path', '')
+        
+        # Sanitize path to prevent directory traversal
+        if '..' in relative_path or relative_path.startswith('/'):
+            return jsonify({'error': 'Invalid path'}), 400
+        
+        full_path = Path(base_folder) / relative_path
+        
+        if not full_path.exists():
+            return jsonify({'error': 'Path does not exist'}), 404
+        
+        if not full_path.is_dir():
+            return jsonify({'error': 'Path is not a directory'}), 400
+        
+        # Get directory contents
+        items = []
+        try:
+            for item in sorted(full_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+                relative_item_path = str(item.relative_to(base_folder))
+                item_info = {
+                    'name': item.name,
+                    'path': relative_item_path,
+                    'is_dir': item.is_dir(),
+                    'size': item.stat().st_size if item.is_file() else 0,
+                    'modified': datetime.fromtimestamp(item.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                }
+                
+                if item.is_file():
+                    ext = item.suffix.lower()
+                    if ext in ['.mp3', '.m4a', '.flac', '.wav', '.ogg']:
+                        item_info['type'] = 'audio'
+                    elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']:
+                        item_info['type'] = 'image'
+                    elif ext in ['.m3u', '.m3u8']:
+                        item_info['type'] = 'playlist'
+                    elif ext == '.txt':
+                        item_info['type'] = 'text'
+                    else:
+                        item_info['type'] = 'file'
+                
+                items.append(item_info)
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+        
+        return jsonify({
+            'path': relative_path,
+            'items': items,
+            'parent': str(Path(relative_path).parent) if relative_path else None
+        })
+    
+    except Exception as e:
+        logger.error(f"Error browsing files: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/files/serve/<path:filepath>')
+def serve_file(filepath):
+    """Serve audio and image files"""
+    try:
+        config = load_config()
+        base_folder = config.get('BASE_FOLDER', '/music')
+        
+        # Sanitize path
+        if '..' in filepath:
+            return jsonify({'error': 'Invalid path'}), 400
+        
+        full_path = Path(base_folder) / filepath
+        
+        if not full_path.exists() or not full_path.is_file():
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Check file type
+        ext = full_path.suffix.lower()
+        allowed_extensions = ['.mp3', '.m4a', '.flac', '.wav', '.ogg', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+        
+        if ext not in allowed_extensions:
+            return jsonify({'error': 'File type not allowed'}), 403
+        
+        return send_file(str(full_path))
+    
+    except Exception as e:
+        logger.error(f"Error serving file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/files/search', methods=['GET'])
+def search_files():
+    """Search for files and folders recursively"""
+    try:
+        config = load_config()
+        base_folder = config.get('BASE_FOLDER', '/music')
+        query = request.args.get('query', '').strip().lower()
+        search_path = request.args.get('path', '')
+        
+        if not query:
+            return jsonify({'error': 'No search query provided'}), 400
+        
+        # Sanitize path
+        if '..' in search_path or search_path.startswith('/'):
+            return jsonify({'error': 'Invalid path'}), 400
+        
+        start_path = Path(base_folder) / search_path
+        
+        if not start_path.exists() or not start_path.is_dir():
+            return jsonify({'error': 'Invalid search path'}), 400
+        
+        # Search for matching files
+        results = []
+        try:
+            for item in start_path.rglob('*'):
+                # Check if name matches query
+                if query in item.name.lower():
+                    try:
+                        relative_path = str(item.relative_to(base_folder))
+                        item_info = {
+                            'name': item.name,
+                            'path': relative_path,
+                            'is_dir': item.is_dir(),
+                            'size': item.stat().st_size if item.is_file() else 0,
+                            'modified': datetime.fromtimestamp(item.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                            'parent_path': str(item.parent.relative_to(base_folder))
+                        }
+                        
+                        if item.is_file():
+                            ext = item.suffix.lower()
+                            if ext in ['.mp3', '.m4a', '.flac', '.wav', '.ogg']:
+                                item_info['type'] = 'audio'
+                            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']:
+                                item_info['type'] = 'image'
+                            elif ext in ['.m3u', '.m3u8']:
+                                item_info['type'] = 'playlist'
+                            elif ext == '.txt':
+                                item_info['type'] = 'text'
+                            else:
+                                item_info['type'] = 'file'
+                        
+                        results.append(item_info)
+                        
+                        # Limit results to prevent overwhelming response
+                        if len(results) >= 500:
+                            break
+                    except (PermissionError, OSError):
+                        continue
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+        
+        return jsonify({
+            'query': query,
+            'search_path': search_path,
+            'count': len(results),
+            'results': results
+        })
+    
+    except Exception as e:
+        logger.error(f"Error searching files: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/files/delete', methods=['DELETE'])
+def delete_file():
+    """Delete a file or empty folder and remove it from the record file"""
+    try:
+        config = load_config()
+        base_folder = config.get('BASE_FOLDER', '/music')
+        filepath = request.json.get('path')
+        
+        if not filepath:
+            return jsonify({'error': 'No file path provided'}), 400
+        
+        # Sanitize path
+        if '..' in filepath:
+            return jsonify({'error': 'Invalid path'}), 400
+        
+        full_path = Path(base_folder) / filepath
+        
+        if not full_path.exists():
+            return jsonify({'error': 'File or folder not found'}), 404
+        
+        # Handle directory deletion
+        if full_path.is_dir():
+            # Check if directory is empty
+            if any(full_path.iterdir()):
+                return jsonify({'error': 'Cannot delete folder: folder is not empty'}), 400
+            
+            # Delete empty directory
+            full_path.rmdir()
+            logger.info(f"Deleted empty folder: {filepath}")
+            return jsonify({'success': True, 'message': 'Folder deleted successfully'})
+        
+        # Handle file deletion
+        if not full_path.is_file():
+            return jsonify({'error': 'Path is not a file or directory'}), 400
+        
+        # Extract video ID from filename if it's a music file
+        video_id = None
+        if full_path.suffix.lower() in ['.mp3', '.m4a', '.flac', '.wav', '.ogg']:
+            # Filename format: "Artist - Title - VIDEO_ID.ext"
+            match = re.search(r' - ([a-zA-Z0-9_-]{11})\.[^.]+$', full_path.name)
+            if match:
+                video_id = match.group(1)
+        
+        # Delete the file
+        full_path.unlink()
+        logger.info(f"Deleted file: {filepath}")
+        
+        # Remove from record file if video ID was found
+        if video_id:
+            record_file = Path(base_folder) / config.get('RECORD_FILE_NAME', '.downloaded_videos.txt')
+            if record_file.exists():
+                try:
+                    with open(record_file, 'r') as f:
+                        lines = f.readlines()
+                    
+                    # Filter out the deleted video ID
+                    updated_lines = [line for line in lines if video_id not in line]
+                    
+                    with open(record_file, 'w') as f:
+                        f.writelines(updated_lines)
+                    
+                    logger.info(f"Removed video ID {video_id} from record file")
+                except Exception as e:
+                    logger.error(f"Error updating record file: {str(e)}")
+        
+        return jsonify({'success': True, 'message': 'File deleted successfully'})
+    
+    except Exception as e:
+        logger.error(f"Error deleting file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

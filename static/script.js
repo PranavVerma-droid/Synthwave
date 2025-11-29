@@ -7,6 +7,10 @@ let debugAutoScroll = true;
 let cronEnabled = false;
 let connectionStatus = 'connecting';
 let debugMode = false;
+let currentPath = '';
+let viewMode = 'list';
+let searchQuery = '';
+let searchDebounceTimer = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -18,11 +22,23 @@ document.addEventListener('DOMContentLoaded', function() {
     updateConnectionStatus();
     loadLogHistory();
     setupMobileMenu();
+    loadFileBrowser('');
     
     // Attach debug mode change listener
     const debugModeSelect = document.getElementById('debug_mode');
     if (debugModeSelect) {
         debugModeSelect.addEventListener('change', previewDebugMode);
+    }
+    
+    // Attach search listener
+    const searchInput = document.getElementById('file-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', handleSearchInput);
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
     }
 });
 
@@ -981,3 +997,428 @@ function closeMobileMenu() {
     overlay.classList.remove('active');
     document.body.style.overflow = '';
 }
+
+// File Browser Functions
+async function loadFileBrowser(path) {
+    currentPath = path;
+    searchQuery = '';
+    const container = document.getElementById('file-browser-container');
+    const parentBtn = document.getElementById('parent-btn');
+    const searchInput = document.getElementById('file-search-input');
+    const clearBtn = document.getElementById('clear-search-btn');
+    const infoDiv = document.getElementById('file-browser-info');
+    
+    // Clear search
+    if (searchInput) searchInput.value = '';
+    clearBtn.style.display = 'none';
+    infoDiv.style.display = 'none';
+    
+    try {
+        container.innerHTML = '<div class="file-browser-placeholder"><p>Loading files...</p></div>';
+        
+        const response = await fetch(`/api/files/browse?path=${encodeURIComponent(path)}`);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load files: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Update breadcrumb
+        updateBreadcrumb(path);
+        
+        // Show/hide parent button
+        if (path) {
+            parentBtn.style.display = 'inline-flex';
+        } else {
+            parentBtn.style.display = 'none';
+        }
+        
+        // Display files
+        displayFiles(data.items);
+        
+    } catch (error) {
+        console.error('Error loading files:', error);
+        container.innerHTML = `<div class="file-browser-placeholder"><p>Error: ${error.message}</p></div>`;
+        showNotification('Failed to load files', 'error');
+    }
+}
+
+function displayFiles(items) {
+    const container = document.getElementById('file-browser-container');
+    
+    // Apply view mode class
+    container.classList.remove('grid-view', 'compact-view');
+    if (viewMode === 'grid') {
+        container.classList.add('grid-view');
+    } else if (viewMode === 'compact') {
+        container.classList.add('compact-view');
+    }
+    
+    if (!items || items.length === 0) {
+        container.innerHTML = '<div class="file-browser-placeholder"><p>This folder is empty</p></div>';
+        return;
+    }
+    
+    const fileList = document.createElement('ul');
+    fileList.className = 'file-list';
+    
+    items.forEach(item => {
+        const li = document.createElement('li');
+        li.className = `file-item ${item.is_dir ? 'folder' : 'file'}`;
+        
+        // Get icon
+        let icon = '📄';
+        if (item.is_dir) {
+            icon = '📁';
+        } else if (item.type === 'audio') {
+            icon = '🎵';
+        } else if (item.type === 'image') {
+            icon = '🖼️';
+        } else if (item.type === 'playlist') {
+            icon = '📋';
+        } else if (item.type === 'text') {
+            icon = '📝';
+        }
+        
+        // Format size
+        let sizeStr = '';
+        if (!item.is_dir && item.size) {
+            sizeStr = formatFileSize(item.size);
+        }
+        
+        // Highlight search term
+        let displayName = escapeHtml(item.name);
+        if (searchQuery) {
+            const regex = new RegExp(`(${escapeRegex(searchQuery)})`, 'gi');
+            displayName = displayName.replace(regex, '<span class="search-highlight">$1</span>');
+        }
+        
+        // Show parent path in search results
+        let parentPathHtml = '';
+        if (searchQuery && item.parent_path) {
+            parentPathHtml = `<div class="parent-path">📂 ${escapeHtml(item.parent_path)}</div>`;
+        }
+        
+        li.innerHTML = `
+            <div class="file-icon">${icon}</div>
+            <div class="file-info">
+                <div class="file-name">${displayName}</div>
+                ${parentPathHtml}
+                <div class="file-meta">
+                    ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+                    <span>${item.modified}</span>
+                </div>
+            </div>
+            <div class="file-actions">
+                ${item.is_dir ? getFolderActions(item) : getFileActions(item)}
+            </div>
+        `;
+        
+        // Add click handler
+        if (item.is_dir) {
+            li.addEventListener('click', (e) => {
+                if (!e.target.closest('.file-actions')) {
+                    navigateToPath(item.path);
+                }
+            });
+        } else if (item.type === 'audio') {
+            li.addEventListener('click', (e) => {
+                if (!e.target.closest('.file-actions')) {
+                    playAudio(item.path, item.name);
+                }
+            });
+        } else if (item.type === 'image') {
+            li.addEventListener('click', (e) => {
+                if (!e.target.closest('.file-actions')) {
+                    viewImage(item.path, item.name);
+                }
+            });
+        }
+        
+        fileList.appendChild(li);
+    });
+    
+    container.innerHTML = '';
+    container.appendChild(fileList);
+}
+
+function getFileActions(item) {
+    let actions = '';
+    
+    if (item.type === 'audio') {
+        actions += `<button onclick="playAudio('${escapeHtml(item.path)}', '${escapeHtml(item.name)}'); event.stopPropagation();" class="btn btn-primary btn-sm">▶️ Play</button>`;
+    }
+    
+    if (item.type === 'image') {
+        actions += `<button onclick="viewImage('${escapeHtml(item.path)}', '${escapeHtml(item.name)}'); event.stopPropagation();" class="btn btn-primary btn-sm">👁️ View</button>`;
+    }
+    
+    actions += `<button onclick="deleteItem('${escapeHtml(item.path)}', '${escapeHtml(item.name)}', false); event.stopPropagation();" class="btn btn-danger btn-sm">🗑️ Delete</button>`;
+    
+    return actions;
+}
+
+function getFolderActions(item) {
+    return `<button onclick="deleteItem('${escapeHtml(item.path)}', '${escapeHtml(item.name)}', true); event.stopPropagation();" class="btn btn-danger btn-sm">🗑️ Delete</button>`;
+}
+
+function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('file-breadcrumb');
+    breadcrumb.innerHTML = '<span class="breadcrumb-item" onclick="navigateToPath(\'\')">🏠 Music</span>';
+    
+    if (path) {
+        const parts = path.split('/').filter(p => p);
+        let currentPath = '';
+        
+        parts.forEach((part, index) => {
+            currentPath += (index > 0 ? '/' : '') + part;
+            const pathCopy = currentPath;
+            
+            const separator = document.createElement('span');
+            separator.className = 'breadcrumb-separator';
+            separator.textContent = '/';
+            breadcrumb.appendChild(separator);
+            
+            const item = document.createElement('span');
+            item.className = 'breadcrumb-item';
+            item.textContent = part;
+            item.onclick = () => navigateToPath(pathCopy);
+            breadcrumb.appendChild(item);
+        });
+    }
+}
+
+function navigateToPath(path) {
+    loadFileBrowser(path);
+}
+
+function navigateToParent() {
+    if (!currentPath) return;
+    
+    const parts = currentPath.split('/').filter(p => p);
+    parts.pop();
+    const parentPath = parts.join('/');
+    
+    loadFileBrowser(parentPath);
+}
+
+function refreshFileBrowser() {
+    loadFileBrowser(currentPath);
+    showNotification('File browser refreshed', 'info');
+}
+
+function playAudio(filepath, filename) {
+    const modal = document.getElementById('audio-modal');
+    const title = document.getElementById('audio-modal-title');
+    const audio = document.getElementById('audio-player');
+    const source = document.getElementById('audio-source');
+    
+    title.textContent = filename;
+    source.src = `/api/files/serve/${encodeURIComponent(filepath)}`;
+    audio.load();
+    
+    modal.style.display = 'flex';
+    
+    // Auto play
+    audio.play().catch(e => {
+        console.error('Error playing audio:', e);
+        showNotification('Failed to play audio', 'error');
+    });
+}
+
+function closeAudioModal() {
+    const modal = document.getElementById('audio-modal');
+    const audio = document.getElementById('audio-player');
+    
+    audio.pause();
+    modal.style.display = 'none';
+}
+
+function viewImage(filepath, filename) {
+    const modal = document.getElementById('image-modal');
+    const title = document.getElementById('image-modal-title');
+    const img = document.getElementById('image-viewer-img');
+    
+    title.textContent = filename;
+    img.src = `/api/files/serve/${encodeURIComponent(filepath)}`;
+    
+    modal.style.display = 'flex';
+}
+
+function closeImageModal() {
+    const modal = document.getElementById('image-modal');
+    modal.style.display = 'none';
+}
+
+async function deleteItem(filepath, filename, isFolder) {
+    const itemType = isFolder ? 'folder' : 'file';
+    let confirmMessage = `Are you sure you want to delete ${itemType} "${filename}"?`;
+    
+    if (isFolder) {
+        confirmMessage += '\n\nNote: Only empty folders can be deleted.';
+    } else {
+        confirmMessage += '\n\nThis will also remove it from the download records.';
+    }
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/files/delete', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: filepath })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || `Failed to delete ${itemType}`);
+        }
+        
+        showNotification(`"${filename}" deleted successfully`, 'success');
+        refreshFileBrowser();
+        
+    } catch (error) {
+        console.error(`Error deleting ${itemType}:`, error);
+        showNotification(`Failed to delete ${itemType}: ${error.message}`, 'error');
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Search Functions
+function handleSearchInput(e) {
+    const query = e.target.value.trim();
+    const clearBtn = document.getElementById('clear-search-btn');
+    
+    if (query) {
+        clearBtn.style.display = 'inline-flex';
+        
+        // Debounce search
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            performSearch();
+        }, 500);
+    } else {
+        clearBtn.style.display = 'none';
+        if (searchQuery) {
+            clearSearch();
+        }
+    }
+}
+
+async function performSearch() {
+    const searchInput = document.getElementById('file-search-input');
+    const query = searchInput.value.trim();
+    
+    if (!query) {
+        loadFileBrowser(currentPath);
+        return;
+    }
+    
+    searchQuery = query;
+    const container = document.getElementById('file-browser-container');
+    const infoDiv = document.getElementById('file-browser-info');
+    const infoSpan = document.getElementById('search-results-info');
+    
+    try {
+        container.innerHTML = '<div class="file-browser-placeholder"><p>Searching...</p></div>';
+        
+        const response = await fetch(`/api/files/search?query=${encodeURIComponent(query)}&path=${encodeURIComponent(currentPath)}`);
+        
+        if (!response.ok) {
+            throw new Error(`Search failed: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Show search info
+        infoDiv.style.display = 'block';
+        infoSpan.textContent = `Found ${data.count} result${data.count !== 1 ? 's' : ''} for "${query}"${currentPath ? ` in "${currentPath}" and subdirectories` : ''}`;
+        
+        // Display results
+        displayFiles(data.results);
+        
+    } catch (error) {
+        console.error('Error searching files:', error);
+        container.innerHTML = `<div class="file-browser-placeholder"><p>Error: ${error.message}</p></div>`;
+        showNotification('Search failed', 'error');
+    }
+}
+
+function clearSearch() {
+    const searchInput = document.getElementById('file-search-input');
+    const clearBtn = document.getElementById('clear-search-btn');
+    const infoDiv = document.getElementById('file-browser-info');
+    
+    searchInput.value = '';
+    searchQuery = '';
+    clearBtn.style.display = 'none';
+    infoDiv.style.display = 'none';
+    
+    loadFileBrowser(currentPath);
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// View Mode Functions
+function setViewMode(mode) {
+    viewMode = mode;
+    
+    const listBtn = document.getElementById('view-list-btn');
+    const compactBtn = document.getElementById('view-compact-btn');
+    const gridBtn = document.getElementById('view-grid-btn');
+    
+    // Remove active class from all buttons
+    listBtn.classList.remove('active');
+    compactBtn.classList.remove('active');
+    gridBtn.classList.remove('active');
+    
+    // Add active class to selected button
+    if (mode === 'list') {
+        listBtn.classList.add('active');
+    } else if (mode === 'compact') {
+        compactBtn.classList.add('active');
+    } else {
+        gridBtn.classList.add('active');
+    }
+    
+    // Refresh display with new view mode
+    const container = document.getElementById('file-browser-container');
+    if (container.querySelector('.file-list')) {
+        container.classList.remove('grid-view', 'compact-view');
+        if (mode === 'grid') {
+            container.classList.add('grid-view');
+        } else if (mode === 'compact') {
+            container.classList.add('compact-view');
+        }
+    }
+}
+
+// Close modals when clicking outside
+document.addEventListener('click', function(e) {
+    const imageModal = document.getElementById('image-modal');
+    const audioModal = document.getElementById('audio-modal');
+    
+    if (e.target === imageModal) {
+        closeImageModal();
+    }
+    
+    if (e.target === audioModal) {
+        closeAudioModal();
+    }
+});

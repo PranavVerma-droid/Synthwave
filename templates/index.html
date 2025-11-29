@@ -55,6 +55,10 @@
                     <span class="nav-icon">📚</span>
                     <span>Log History</span>
                 </a>
+                <a href="#file-browser" class="nav-item" onclick="scrollToSection('file-browser')">
+                    <span class="nav-icon">📁</span>
+                    <span>File Browser</span>
+                </a>
                 <a href="#automation" class="nav-item" onclick="scrollToSection('automation')">
                     <span class="nav-icon">⏰</span>
                     <span>Automation</span>
@@ -263,6 +267,53 @@
                     </div>
                 </section>
 
+                <!-- File Browser Section -->
+                <section id="file-browser">
+                    <div class="section-header">
+                        <h2><span>📁</span> File Browser</h2>
+                    </div>
+                    <div class="section-content">
+                        <div class="file-browser-controls">
+                            <div class="search-container">
+                                <input type="text" id="file-search-input" class="search-input" placeholder="🔍 Search files and folders...">
+                                <button onclick="clearSearch()" id="clear-search-btn" class="btn btn-secondary btn-sm" style="display: none;">
+                                    ✖️ Clear
+                                </button>
+                            </div>
+                            <div class="view-controls">
+                                <button onclick="setViewMode('list')" id="view-list-btn" class="btn btn-secondary btn-sm active">
+                                    📋 List
+                                </button>
+                                <button onclick="setViewMode('compact')" id="view-compact-btn" class="btn btn-secondary btn-sm">
+                                    ☰ Compact
+                                </button>
+                                <button onclick="setViewMode('grid')" id="view-grid-btn" class="btn btn-secondary btn-sm">
+                                    ⊞ Grid
+                                </button>
+                            </div>
+                            <button onclick="refreshFileBrowser()" class="btn btn-primary">
+                                🔄 Refresh
+                            </button>
+                            <button onclick="navigateToParent()" id="parent-btn" class="btn btn-secondary" style="display: none;">
+                                ⬆️ Parent Folder
+                            </button>
+                        </div>
+                        <div class="file-browser-info" id="file-browser-info" style="display: none;">
+                            <span id="search-results-info"></span>
+                        </div>
+                        <div class="breadcrumb-container">
+                            <div class="breadcrumb" id="file-breadcrumb">
+                                <span class="breadcrumb-item" onclick="navigateToPath('')">🏠 Music</span>
+                            </div>
+                        </div>
+                        <div id="file-browser-container" class="file-browser-container">
+                            <div class="file-browser-placeholder">
+                                <p>Loading files...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Automation Section -->
                 <section id="automation">
                     <div class="section-header">
@@ -387,6 +438,39 @@
                 <button onclick="closeCronModal()" class="btn btn-secondary">
                     ✖️ Close
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Viewer Modal -->
+    <div id="image-modal" class="modal" style="display: none;">
+        <div class="modal-content image-modal-content">
+            <div class="modal-header">
+                <h3 id="image-modal-title">Image Viewer</h3>
+                <button onclick="closeImageModal()" class="btn btn-secondary btn-sm">
+                    ✖️ Close
+                </button>
+            </div>
+            <div class="image-viewer">
+                <img id="image-viewer-img" src="" alt="Image">
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Player Modal -->
+    <div id="audio-modal" class="modal" style="display: none;">
+        <div class="modal-content audio-modal-content">
+            <div class="modal-header">
+                <h3 id="audio-modal-title">Audio Player</h3>
+                <button onclick="closeAudioModal()" class="btn btn-secondary btn-sm">
+                    ✖️ Close
+                </button>
+            </div>
+            <div class="audio-player">
+                <audio id="audio-player" controls>
+                    <source id="audio-source" src="" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
             </div>
         </div>
     </div>
