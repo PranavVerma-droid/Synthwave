@@ -3,6 +3,12 @@ FROM python:3.11-slim
 # Install system dependencies including Node.js 20+
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    libavcodec-extra \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
     imagemagick \
     findutils \
     curl \
