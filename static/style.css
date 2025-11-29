@@ -621,16 +621,23 @@ input:checked + .toggle-slider:before {
     padding: 1.25rem;
     max-height: 600px;
     overflow-y: auto;
+    overflow-x: auto;
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     border: 1px solid var(--neutral-700);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .log-entry {
-    margin-bottom: 0.5rem;
-    line-height: 1.6;
-    padding: 0.375rem;
+    margin-bottom: 0.25rem;
+    margin-left: 0.25rem;
+    line-height: 1.4;
+    padding: 0.25rem;
     border-radius: 0.25rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
 }
 
 .log-timestamp {
