@@ -535,7 +535,7 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
         'postprocessors': postprocessors,
         'parse_metadata': parse_metadata,
         'postprocessor_args': {
-            'EmbedThumbnail': ['-c:v', 'png', '-vf', 'crop="if(gt(ih,iw),iw,ih)":"if(gt(iw,ih),ih,iw)"']
+            'EmbedThumbnail+ffmpeg_o': ['-c:v', 'png', '-vf', "crop='if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'"]
         },
         'overwrites': False,
         'ignoreerrors': False,  # Don't ignore errors during actual download
@@ -546,6 +546,63 @@ def download_song(video_url, video_id, target_folder, album_name=None, track_num
             log_message(f"Downloading (attempt {attempt + 1}/{max_retries})...", "info")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([video_url])
+            
+            # Post-process: Extract, crop, and re-embed thumbnail using ImageMagick
+            try:
+                mp3_file = f"{target_folder}/*{video_id}.mp3"
+                # Find the actual file
+                import glob
+                mp3_files = glob.glob(mp3_file)
+                if mp3_files:
+                    actual_mp3 = mp3_files[0]
+                    temp_cover = f"{actual_mp3}.cover.png"
+                    temp_cropped = f"{actual_mp3}.cover.cropped.png"
+                    temp_mp3 = f"{actual_mp3}.tmp.mp3"
+                    
+                    # Extract embedded artwork
+                    extract_result = subprocess.run([
+                        "ffmpeg", "-i", actual_mp3,
+                        "-an", "-vcodec", "copy",
+                        "-y", temp_cover
+                    ], capture_output=True, timeout=30)
+                    
+                    if extract_result.returncode == 0 and os.path.exists(temp_cover):
+                        # Crop to square using ImageMagick
+                        crop_result = subprocess.run([
+                            "convert", temp_cover,
+                            "-gravity", "center",
+                            "-crop", "1:1",
+                            "+repage",
+                            temp_cropped
+                        ], capture_output=True, timeout=30)
+                        
+                        if crop_result.returncode == 0 and os.path.exists(temp_cropped):
+                            # Re-embed cropped artwork
+                            embed_result = subprocess.run([
+                                "ffmpeg", "-i", actual_mp3,
+                                "-i", temp_cropped,
+                                "-map", "0:0", "-map", "1:0",
+                                "-c", "copy",
+                                "-id3v2_version", "3",
+                                "-metadata:s:v", "title=Album cover",
+                                "-metadata:s:v", "comment=Cover (front)",
+                                "-y", temp_mp3
+                            ], capture_output=True, timeout=30)
+                            
+                            if embed_result.returncode == 0 and os.path.exists(temp_mp3):
+                                os.replace(temp_mp3, actual_mp3)
+                                log_message("Song artwork cropped to square", "success")
+                            else:
+                                if os.path.exists(temp_mp3):
+                                    os.remove(temp_mp3)
+                        
+                        # Cleanup temp files
+                        for temp_file in [temp_cover, temp_cropped]:
+                            if os.path.exists(temp_file):
+                                os.remove(temp_file)
+            except Exception as crop_error:
+                log_message(f"Failed to crop song artwork (non-critical): {str(crop_error)}", "warning")
+            
             return True
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
@@ -581,15 +638,23 @@ def download_album_artwork(album_url, album_folder, config=None):
         log_message("Album artwork already exists", "info")
         return True
     
+    log_message("Downloading album artwork...", "info")
+    
     # Clean up existing artwork
     for file in Path(album_folder).glob("folder.*"):
-        file.unlink()
+        try:
+            file.unlink()
+        except Exception as e:
+            log_message(f"Could not remove old artwork file {file.name}: {str(e)}", "warning")
     
     try:
+        # Method 1: Try with FFmpegThumbnailsConvertor postprocessor
         output_template = f"{album_folder}/folder.%(ext)s"
         ydl_opts = get_ytdlp_opts(config, output_template, {
             'writethumbnail': True,
             'skip_download': True,
+            'ignoreerrors': False,
+            'extract_flat': False,  # Need full extraction for thumbnails
             'postprocessors': [{
                 'key': 'FFmpegThumbnailsConvertor',
                 'format': 'png',
@@ -599,32 +664,73 @@ def download_album_artwork(album_url, album_folder, config=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([album_url])
         
+        # Check for any downloaded files
+        artwork_files = list(Path(album_folder).glob("folder.*"))
+        log_message(f"Found {len(artwork_files)} artwork file(s) after download", "info")
+        
+        # If PNG exists, we're done
+        if os.path.exists(artwork_file):
+            log_message(f"Album artwork downloaded as PNG: {os.path.getsize(artwork_file)} bytes", "success")
+        else:
+            # Try to find and convert any downloaded thumbnail
+            for file in artwork_files:
+                if file.suffix.lower() in ['.jpg', '.jpeg', '.webp']:
+                    log_message(f"Converting {file.suffix} to PNG...", "info")
+                    try:
+                        # Use ffmpeg to convert to PNG
+                        result = subprocess.run([
+                            "ffmpeg", "-i", str(file),
+                            "-y", artwork_file
+                        ], capture_output=True, timeout=30)
+                        
+                        if result.returncode == 0 and os.path.exists(artwork_file):
+                            log_message(f"Converted {file.suffix} to PNG successfully", "success")
+                            file.unlink()  # Remove original
+                            break
+                        else:
+                            log_message(f"FFmpeg conversion failed: {result.stderr.decode()}", "warning")
+                    except Exception as conv_error:
+                        log_message(f"Conversion error: {str(conv_error)}", "warning")
+        
         # Clean up non-png files
         for file in Path(album_folder).glob("folder.*"):
-            if file.suffix != ".png":
-                file.unlink()
+            if file.suffix != ".png" and file.exists():
+                try:
+                    file.unlink()
+                except Exception as e:
+                    log_message(f"Could not remove {file.name}: {str(e)}", "warning")
+        
+        # Final verification
+        if not os.path.exists(artwork_file):
+            log_message("Album artwork file not created after all attempts", "error")
+            return False
         
         # Crop to square if ImageMagick is available
         try:
-            subprocess.run([
+            result = subprocess.run([
                 "convert", artwork_file,
                 "-gravity", "center",
                 "-crop", "1:1",
                 "+repage",
                 f"{artwork_file}.tmp"
-            ], timeout=30)
+            ], capture_output=True, timeout=30)
             
-            if os.path.exists(f"{artwork_file}.tmp"):
+            if result.returncode == 0 and os.path.exists(f"{artwork_file}.tmp"):
                 os.replace(f"{artwork_file}.tmp", artwork_file)
-                log_message("Album artwork cropped to square", "success")
-        except:
-            log_message("Keeping original aspect ratio", "info")
+                log_message("Album artwork downloaded and cropped to square", "success")
+            else:
+                log_message("Album artwork downloaded (original aspect ratio)", "success")
+        except Exception as crop_error:
+            log_message(f"Album artwork downloaded (crop skipped: {str(crop_error)})", "success")
         
         return True
     except Exception as e:
         log_message(f"Failed to download album artwork: {str(e)}", "error")
-    
-    return False
+        # Try to log any files that were created
+        artwork_files = list(Path(album_folder).glob("folder.*"))
+        if artwork_files:
+            log_message(f"Found files: {[f.name for f in artwork_files]}", "info")
+        return False
 
 
 def generate_m3u_playlist(playlist_name, playlist_url, song_list, config):
