@@ -7,7 +7,6 @@ services:
       - "${SYNTHWAVE_PORT}:5000"
     volumes:
       - ${MUSIC_PATH}:/music
-      - ${BINARY_PATH}:/binary
       - ${PLAYLISTS_PATH}:/playlists
       - ${CONFIG_PATH}:/app/config
       - ${LOGS_PATH}:/app/logs
