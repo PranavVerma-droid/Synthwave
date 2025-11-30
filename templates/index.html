@@ -118,8 +118,61 @@
                                 </select>
                             </div>
                         </div>
-                        <div style="text-align: right; margin-top: 1.5rem;">
-                            <button onclick="saveConfig()" class="btn btn-primary">
+                        
+                        <!-- Cookies Section -->
+                        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+                            <h3 style="margin-bottom: 1rem; color: var(--text); font-size: 1.125rem;">🍪 YouTube Cookies (Optional)</h3>
+                            <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
+                                Upload a cookies.txt file to access age-restricted or private videos. 
+                                Get cookies using this 
+                                <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   style="color: var(--primary); text-decoration: underline;">
+                                    Chrome extension</a>.
+                            </p>
+                            <div style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0.25rem;">
+                                <p style="color: #ffc107; font-size: 0.875rem; margin: 0; font-weight: 500;">
+                                    ⚠️ <strong>Warning:</strong> Excessive use of cookies may result in temporary or permanent account suspension by YouTube. 
+                                    Use cookies in moderation and consider using a throwaway account to avoid risking your main account.
+                                </p>
+                            </div>
+                            
+                            <div id="cookies-status" style="margin-bottom: 1rem;">
+                                <p style="color: var(--text-secondary); font-size: 0.875rem;">
+                                    Status: <span id="cookies-status-text">Checking...</span>
+                                </p>
+                            </div>
+                            
+                            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 200px;">
+                                    <input type="file" 
+                                           id="cookies-file-input" 
+                                           accept=".txt"
+                                           style="display: none;"
+                                           onchange="handleCookiesFileSelect(event)">
+                                    <button onclick="document.getElementById('cookies-file-input').click()" 
+                                            class="btn btn-secondary">
+                                        📁 Choose cookies.txt
+                                    </button>
+                                    <span id="cookies-filename" style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;"></span>
+                                </div>
+                                <button id="upload-cookies-btn" 
+                                        onclick="uploadCookies()" 
+                                        class="btn btn-primary"
+                                        style="display: none;">
+                                    ⬆️ Upload Cookies
+                                </button>
+                                <button id="delete-cookies-btn" 
+                                        onclick="deleteCookies()" 
+                                        class="btn btn-danger"
+                                        style="display: none;">
+                                    🗑️ Delete Cookies
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div style="text-align: right; margin-top: 1.5rem;">                           <button onclick="saveConfig()" class="btn btn-primary">
                                 💾 Save Configuration
                             </button>
                         </div>

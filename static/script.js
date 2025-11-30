@@ -135,6 +135,9 @@ async function loadConfig() {
         
         debugMode = data.config.DEBUG_MODE || false;
         updateDebugUI();
+        
+        // Load cookies status
+        loadCookiesStatus();
     } catch (error) {
         console.error('Error loading config:', error);
     }
@@ -171,6 +174,114 @@ async function saveConfig() {
     } catch (error) {
         console.error('Error saving config:', error);
         showNotification('Error saving configuration', 'error');
+    }
+}
+
+// Cookies Management
+let selectedCookiesFile = null;
+
+async function loadCookiesStatus() {
+    try {
+        const response = await fetch('/api/cookies/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            updateCookiesUI(data.exists, data.enabled);
+        }
+    } catch (error) {
+        console.error('Error loading cookies status:', error);
+    }
+}
+
+function updateCookiesUI(exists, enabled) {
+    const statusText = document.getElementById('cookies-status-text');
+    const deleteBtn = document.getElementById('delete-cookies-btn');
+    
+    if (exists) {
+        statusText.textContent = enabled ? '✅ Cookies file uploaded and enabled' : '⚠️ Cookies file exists but disabled';
+        statusText.style.color = enabled ? 'var(--success)' : 'var(--warning)';
+        deleteBtn.style.display = 'inline-block';
+    } else {
+        statusText.textContent = '❌ No cookies file uploaded';
+        statusText.style.color = 'var(--text-secondary)';
+        deleteBtn.style.display = 'none';
+    }
+}
+
+function handleCookiesFileSelect(event) {
+    const file = event.target.files[0];
+    const filenameSpan = document.getElementById('cookies-filename');
+    const uploadBtn = document.getElementById('upload-cookies-btn');
+    
+    if (file) {
+        selectedCookiesFile = file;
+        filenameSpan.textContent = file.name;
+        uploadBtn.style.display = 'inline-block';
+    } else {
+        selectedCookiesFile = null;
+        filenameSpan.textContent = '';
+        uploadBtn.style.display = 'none';
+    }
+}
+
+async function uploadCookies() {
+    if (!selectedCookiesFile) {
+        showNotification('Please select a cookies.txt file first', 'warning');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedCookiesFile);
+    
+    try {
+        const response = await fetch('/api/cookies/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Cookies file uploaded successfully!', 'success');
+            
+            // Reset file input
+            document.getElementById('cookies-file-input').value = '';
+            document.getElementById('cookies-filename').textContent = '';
+            document.getElementById('upload-cookies-btn').style.display = 'none';
+            selectedCookiesFile = null;
+            
+            // Reload status
+            loadCookiesStatus();
+        } else {
+            showNotification('Failed to upload cookies: ' + (result.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error uploading cookies:', error);
+        showNotification('Error uploading cookies file', 'error');
+    }
+}
+
+async function deleteCookies() {
+    if (!confirm('Are you sure you want to delete the cookies file?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/cookies/delete', {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Cookies file deleted successfully', 'success');
+            loadCookiesStatus();
+        } else {
+            showNotification('Failed to delete cookies: ' + (result.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting cookies:', error);
+        showNotification('Error deleting cookies file', 'error');
     }
 }
 

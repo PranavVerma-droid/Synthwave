@@ -71,7 +71,8 @@ DEFAULT_CONFIG = {
     "TIMEOUT_METADATA": 600,
     "TIMEOUT_DOWNLOAD": 1800,
     "MAX_RETRIES": 3,
-    "DEBUG_MODE": False
+    "DEBUG_MODE": False,
+    "COOKIES_ENABLED": False
 }
 
 # Global state
@@ -472,6 +473,7 @@ class YtdlpLogger:
 def get_ytdlp_opts(config, output_template, extra_opts=None):
     """Get base yt-dlp options"""
     debug_mode = config.get("DEBUG_MODE", False)
+    cookies_enabled = config.get("COOKIES_ENABLED", False)
     
     opts = {
         'outtmpl': output_template,
@@ -486,6 +488,13 @@ def get_ytdlp_opts(config, output_template, extra_opts=None):
             "node": {},
         }
     }
+    
+    if cookies_enabled:
+        cookies_file = CONFIG_DIR / "cookies.txt"
+        if cookies_file.exists():
+            opts['cookiefile'] = str(cookies_file)
+            if debug_mode:
+                log_message(f"Using cookies file: {cookies_file}", "info", is_debug=True)
     
     if extra_opts:
         opts.update(extra_opts)
@@ -1158,7 +1167,11 @@ def index():
 def api_config():
     """Get or update configuration"""
     if request.method == 'GET':
-        return jsonify({'config': load_config()})
+        config = load_config()
+        # Check if cookies.txt exists
+        cookies_file = CONFIG_DIR / "cookies.txt"
+        config['COOKIES_FILE_EXISTS'] = cookies_file.exists()
+        return jsonify({'config': config})
     
     elif request.method == 'POST':
         config = load_config()
@@ -1166,11 +1179,14 @@ def api_config():
         
         # Update configuration
         for key in ['BASE_FOLDER', 'RECORD_FILE_NAME', 
-                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE']:
+                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE', 'COOKIES_ENABLED']:
             if key in data:
                 config[key] = data[key]
         
         save_config(config)
+        # Check if cookies.txt exists
+        cookies_file = CONFIG_DIR / "cookies.txt"
+        config['COOKIES_FILE_EXISTS'] = cookies_file.exists()
         return jsonify({'success': True, 'config': config})
 
 
@@ -1245,6 +1261,78 @@ def cancel_download():
 def download_status_endpoint():
     """Get current download status"""
     return jsonify(download_status)
+
+
+@app.route('/api/cookies/upload', methods=['POST'])
+def upload_cookies():
+    """Upload cookies.txt file"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        if not file.filename.endswith('.txt'):
+            return jsonify({'success': False, 'error': 'File must be a .txt file'}), 400
+        
+        # Save the cookies file
+        cookies_path = CONFIG_DIR / "cookies.txt"
+        file.save(str(cookies_path))
+        
+        # Enable cookies in config
+        config = load_config()
+        config['COOKIES_ENABLED'] = True
+        save_config(config)
+        
+        log_message("Cookies file uploaded successfully", "success")
+        return jsonify({'success': True, 'message': 'Cookies file uploaded successfully'})
+    
+    except Exception as e:
+        logger.error(f"Error uploading cookies: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cookies/delete', methods=['POST'])
+def delete_cookies():
+    """Delete cookies.txt file"""
+    try:
+        cookies_path = CONFIG_DIR / "cookies.txt"
+        
+        if cookies_path.exists():
+            cookies_path.unlink()
+        
+        # Disable cookies in config
+        config = load_config()
+        config['COOKIES_ENABLED'] = False
+        save_config(config)
+        
+        log_message("Cookies file deleted", "info")
+        return jsonify({'success': True, 'message': 'Cookies file deleted successfully'})
+    
+    except Exception as e:
+        logger.error(f"Error deleting cookies: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cookies/status')
+def cookies_status():
+    """Check if cookies file exists"""
+    try:
+        cookies_path = CONFIG_DIR / "cookies.txt"
+        config = load_config()
+        
+        return jsonify({
+            'success': True,
+            'exists': cookies_path.exists(),
+            'enabled': config.get('COOKIES_ENABLED', False)
+        })
+    
+    except Exception as e:
+        logger.error(f"Error checking cookies status: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/logs')
