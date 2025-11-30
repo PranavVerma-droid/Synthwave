@@ -194,6 +194,14 @@
                                 ➕ Add Playlist
                             </button>
                         </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 0.5rem 0;">
+                            <p style="margin: 0; color: #666; font-size: 0.875rem;">
+                                <span id="playlist-count">0</span> playlists configured
+                            </p>
+                            <button onclick="refreshAllPlaylists()" class="btn btn-secondary btn-sm" id="refresh-all-btn" title="Refresh all playlist metadata">
+                                🔄 Refresh All
+                            </button>
+                        </div>
                         <div id="playlists-container">
                             <p style="text-align: center; color: #888; padding: 20px;">
                                 Loading playlists...

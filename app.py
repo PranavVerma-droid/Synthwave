@@ -251,6 +251,116 @@ LOGS_INFO_FILE = LOGS_DIR / "logs-info.json"
 current_log_file = None
 current_log_handler = None
 
+# Playlist Info Cache
+PLAYLIST_INFO_FILE = CONFIG_DIR / "playlist-info.json"
+
+
+def load_playlist_info():
+    """Load playlist info cache from JSON file"""
+    if PLAYLIST_INFO_FILE.exists():
+        try:
+            with open(PLAYLIST_INFO_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading playlist info: {e}")
+    return {}
+
+
+def save_playlist_info(playlist_info):
+    """Save playlist info cache to JSON file"""
+    try:
+        with open(PLAYLIST_INFO_FILE, 'w', encoding='utf-8') as f:
+            json.dump(playlist_info, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error saving playlist info: {e}")
+
+
+def is_album_url(url):
+    """Check if URL is an album"""
+    return "/album/" in url or "OLAK5uy_" in url
+
+
+def get_playlist_preview(url, force_refresh=False):
+    """Get playlist preview from cache or fetch if not available"""
+    playlist_info = load_playlist_info()
+    
+    # Check if we have cached data and not forcing refresh
+    if not force_refresh and url in playlist_info:
+        return playlist_info[url]
+    
+    # Fetch new data
+    try:
+        config = load_config()
+        cookies_enabled = config.get('COOKIES_ENABLED', False)
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': 'in_playlist',
+            'skip_download': True,
+        }
+        
+        if cookies_enabled:
+            cookies_file = CONFIG_DIR / "cookies.txt"
+            if cookies_file.exists():
+                ydl_opts['cookiefile'] = str(cookies_file)
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if info is None:
+                return None
+            
+            # Handle both playlists and albums
+            title = info.get('title', info.get('album', 'Unknown Playlist'))
+            # Remove "Album - " prefix if present
+            if title.startswith('Album - '):
+                title = title[8:]  # Remove first 8 characters
+            
+            # For albums, try multiple fields to get the artist name
+            # Check entries first for artist info, as albums often have it in the track data
+            uploader = info.get('uploader') or info.get('channel') or info.get('artist') or info.get('album_artist')
+            
+            # If still not found and this is an album, try to get artist from first entry
+            if not uploader and is_album_url(url):
+                entries = info.get('entries', [])
+                if entries and len(entries) > 0:
+                    first_entry = entries[0]
+                    uploader = first_entry.get('artist') or first_entry.get('uploader') or first_entry.get('channel')
+            
+            # Final fallback
+            if not uploader:
+                uploader = info.get('uploader_id', 'Unknown Artist')
+            thumbnail = info.get('thumbnail', info.get('thumbnails', [{}])[0].get('url', '') if info.get('thumbnails') else '')
+            
+            # Get entry count
+            entries = info.get('entries', [])
+            if entries:
+                entry_count = len(entries)
+            else:
+                entry_count = info.get('playlist_count', info.get('track_count', 0))
+            
+            preview = {
+                'title': title,
+                'uploader': uploader,
+                'thumbnail': thumbnail,
+                'entry_count': entry_count,
+                'description': info.get('description', ''),
+                'url': url,
+                'is_album': is_album_url(url),
+                'cached_at': datetime.now().isoformat()
+            }
+            
+            # Save to cache
+            playlist_info[url] = preview
+            save_playlist_info(playlist_info)
+            
+            return preview
+            
+    except Exception as e:
+        logger.error(f"Error fetching playlist preview for {url}: {e}")
+        return None
+
 
 def load_logs_info():
     """Load logs info from JSON file"""
@@ -389,11 +499,6 @@ def extract_playlist_id(url):
     if match:
         return match.group(1)
     return None
-
-
-def is_album_url(url):
-    """Check if URL is an album"""
-    return "/album/" in url or "OLAK5uy_" in url
 
 
 def song_exists(video_id, base_folder):
@@ -1196,7 +1301,27 @@ def api_playlists():
     config = load_config()
     
     if request.method == 'GET':
-        return jsonify({'playlists': config.get('PLAYLISTS', [])})
+        playlists = config.get('PLAYLISTS', [])
+        playlist_info = load_playlist_info()
+        
+        # Return playlists with their cached preview data
+        playlists_with_previews = []
+        for url in playlists:
+            preview = playlist_info.get(url)
+            if preview:
+                playlists_with_previews.append(preview)
+            else:
+                # Return basic info for uncached playlists
+                playlists_with_previews.append({
+                    'url': url,
+                    'is_album': is_album_url(url),
+                    'cached': False
+                })
+        
+        return jsonify({
+            'playlists': playlists,
+            'previews': playlists_with_previews
+        })
     
     elif request.method == 'POST':
         data = request.json
@@ -1208,6 +1333,15 @@ def api_playlists():
         if url not in config['PLAYLISTS']:
             config['PLAYLISTS'].append(url)
             save_config(config)
+            
+            # Fetch preview data for the new playlist
+            preview = get_playlist_preview(url)
+            
+            return jsonify({
+                'success': True, 
+                'playlists': config['PLAYLISTS'],
+                'preview': preview
+            })
         
         return jsonify({'success': True, 'playlists': config['PLAYLISTS']})
     
@@ -1218,8 +1352,70 @@ def api_playlists():
         if url in config['PLAYLISTS']:
             config['PLAYLISTS'].remove(url)
             save_config(config)
+            
+            # Optionally remove from cache
+            playlist_info = load_playlist_info()
+            if url in playlist_info:
+                del playlist_info[url]
+                save_playlist_info(playlist_info)
         
         return jsonify({'success': True, 'playlists': config['PLAYLISTS']})
+
+
+@app.route('/api/playlists/preview', methods=['POST'])
+def api_playlist_preview():
+    """Fetch playlist preview metadata (individual or refresh)"""
+    try:
+        data = request.json
+        url = data.get('url', '').strip()
+        force_refresh = data.get('force_refresh', False)
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL is required'}), 400
+        
+        preview = get_playlist_preview(url, force_refresh=force_refresh)
+        
+        if preview:
+            return jsonify({'success': True, 'preview': preview})
+        else:
+            return jsonify({'success': False, 'error': 'Could not fetch playlist info'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error in playlist preview API: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/playlists/refresh-all', methods=['POST'])
+def api_refresh_all_playlists():
+    """Refresh all playlist previews"""
+    try:
+        config = load_config()
+        playlists = config.get('PLAYLISTS', [])
+        
+        refreshed = []
+        failed = []
+        
+        for url in playlists:
+            try:
+                preview = get_playlist_preview(url, force_refresh=True)
+                if preview:
+                    refreshed.append(url)
+                else:
+                    failed.append(url)
+            except Exception as e:
+                logger.error(f"Failed to refresh {url}: {e}")
+                failed.append(url)
+        
+        return jsonify({
+            'success': True,
+            'refreshed': len(refreshed),
+            'failed': len(failed),
+            'failed_urls': failed
+        })
+        
+    except Exception as e:
+        logger.error(f"Error refreshing all playlists: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/download/start', methods=['POST'])

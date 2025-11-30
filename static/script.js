@@ -291,7 +291,7 @@ async function loadPlaylists() {
         const response = await fetch('/api/playlists');
         const data = await response.json();
         
-        updatePlaylistsDisplay(data.playlists);
+        updatePlaylistsDisplay(data.playlists, data.previews || []);
     } catch (error) {
         console.error('Error loading playlists:', error);
     }
@@ -323,7 +323,8 @@ async function addPlaylist() {
         const result = await response.json();
         
         if (result.success) {
-            updatePlaylistsDisplay(result.playlists);
+            // Reload all playlists to get updated list with previews
+            loadPlaylists();
             urlInput.value = '';
             showNotification('Playlist added successfully!', 'success');
         } else {
@@ -352,7 +353,7 @@ async function removePlaylist(url) {
         const result = await response.json();
         
         if (result.success) {
-            updatePlaylistsDisplay(result.playlists);
+            loadPlaylists();
             showNotification('Playlist removed successfully!', 'success');
         } else {
             showNotification('Failed to remove playlist', 'error');
@@ -363,8 +364,14 @@ async function removePlaylist(url) {
     }
 }
 
-function updatePlaylistsDisplay(playlists) {
+function updatePlaylistsDisplay(playlists, previews) {
     const container = document.getElementById('playlists-container');
+    
+    // Update playlist count
+    const countElement = document.getElementById('playlist-count');
+    if (countElement) {
+        countElement.textContent = playlists ? playlists.length : 0;
+    }
     
     if (!playlists || playlists.length === 0) {
         container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">No playlists configured. Add one above!</p>';
@@ -373,24 +380,147 @@ function updatePlaylistsDisplay(playlists) {
 
     container.innerHTML = '';
     
-    playlists.forEach(url => {
+    playlists.forEach((url, index) => {
         const item = document.createElement('div');
         item.className = 'playlist-item';
         item.dataset.url = url;
 
-        const isAlbum = url.includes('OLAK5uy_') || url.includes('/album/');
-        const badge = isAlbum ? '📀 Album' : '🎵 Playlist';
-
-        item.innerHTML = `
-            <div class="playlist-url">
-                <span class="playlist-type-badge">${badge}</span>
-                <span class="url-text">${url}</span>
-            </div>
-            <button onclick="removePlaylist('${url.replace(/'/g, "\\'")}');" class="btn btn-danger btn-sm">Remove</button>
-        `;
-
-        container.appendChild(item);
+        // Find the matching preview for this URL
+        const preview = previews && previews.find(p => p.url === url);
+        
+        if (preview && preview.cached !== false) {
+            // We have cached preview data
+            displayPlaylistWithPreview(item, url, preview);
+            container.appendChild(item);
+        } else {
+            // No cached data, fetch it
+            const isAlbum = url.includes('OLAK5uy_') || url.includes('/album/');
+            
+            // Create loading skeleton
+            item.innerHTML = `
+                <div class="playlist-preview-card">
+                    <div class="playlist-preview-loading">
+                        <div class="skeleton-thumbnail"></div>
+                        <div class="playlist-preview-info">
+                            <div class="skeleton-text skeleton-title"></div>
+                            <div class="skeleton-text skeleton-subtitle"></div>
+                        </div>
+                    </div>
+                    <button onclick="removePlaylist('${url.replace(/'/g, "\\'")}');" class="btn btn-danger btn-sm playlist-remove-btn">Remove</button>
+                </div>
+            `;
+            
+            container.appendChild(item);
+            
+            // Fetch preview data
+            fetchPlaylistPreview(url, item);
+        }
     });
+}
+
+function displayPlaylistWithPreview(itemElement, url, preview) {
+    const isAlbum = preview.is_album;
+    const badge = isAlbum ? '📀 Album' : '🎵 Playlist';
+    const thumbnail = preview.thumbnail || 'test';
+    const description = preview.description && preview.description.trim() !== '' 
+        ? `<p class="playlist-description">${escapeHtml(preview.description)}</p>` 
+        : '';
+    
+    itemElement.innerHTML = `
+        <div class="playlist-preview-card">
+            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="playlist-preview-link">
+                <div class="playlist-preview-content">
+                    <img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(preview.title || 'Playlist')}" class="playlist-thumbnail" loading="lazy">
+                    <div class="playlist-preview-info">
+                        <span class="playlist-type-badge">${badge}</span>
+                        <h3 class="playlist-title">${escapeHtml(preview.title || 'Unknown Playlist')}</h3>
+                        <p class="playlist-artist">${escapeHtml(preview.uploader || 'Unknown Artist')}</p>
+                        <p class="playlist-meta">${preview.entry_count || 0} ${isAlbum ? 'tracks' : 'videos'}</p>
+                        ${description}
+                    </div>
+                </div>
+            </a>
+            <button onclick="removePlaylist('${url.replace(/'/g, "\\'")}');" class="btn btn-danger btn-sm playlist-remove-btn">Remove</button>
+        </div>
+    `;
+}
+
+async function fetchPlaylistPreview(url, itemElement) {
+    try {
+        const response = await fetch('/api/playlists/preview', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: url })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.preview) {
+            displayPlaylistWithPreview(itemElement, url, data.preview);
+        } else {
+            // Fallback to simple display
+            showSimplePlaylistItem(url, itemElement);
+        }
+    } catch (error) {
+        console.error('Error fetching playlist preview:', error);
+        showSimplePlaylistItem(url, itemElement);
+    }
+}
+
+function showSimplePlaylistItem(url, itemElement) {
+    const isAlbum = url.includes('OLAK5uy_') || url.includes('/album/');
+    const badge = isAlbum ? '📀 Album' : '🎵 Playlist';
+    
+    itemElement.querySelector('.playlist-preview-card').innerHTML = `
+        <div class="playlist-preview-content">
+            <div class="playlist-preview-info" style="margin-left: 0;">
+                <span class="playlist-type-badge">${badge}</span>
+                <span class="url-text">${escapeHtml(url)}</span>
+            </div>
+        </div>
+        <button onclick="removePlaylist('${url.replace(/'/g, "\\'")}');" class="btn btn-danger btn-sm playlist-remove-btn">Remove</button>
+    `;
+}
+
+async function refreshAllPlaylists() {
+    const refreshBtn = document.getElementById('refresh-all-btn');
+    
+    if (!refreshBtn) return;
+    
+    // Disable button and show loading state
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '⏳ Refreshing... (Don\'t Reload!)';
+    
+    try {
+        const response = await fetch('/api/playlists/refresh-all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Reload playlists to show updated data
+            await loadPlaylists();
+            
+            const message = `Refreshed ${result.refreshed} playlist(s)` + 
+                          (result.failed > 0 ? `, ${result.failed} failed` : '');
+            showNotification(message, result.failed > 0 ? 'warning' : 'success');
+        } else {
+            showNotification('Failed to refresh playlists', 'error');
+        }
+    } catch (error) {
+        console.error('Error refreshing playlists:', error);
+        showNotification('Error refreshing playlists', 'error');
+    } finally {
+        // Re-enable button
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '🔄 Refresh All';
+    }
 }
 
 // Download Control
