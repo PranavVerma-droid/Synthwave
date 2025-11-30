@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-YouTube Music Playlist Downloader - Professional Self-Hosted Application
-A modern web interface for managing and downloading YouTube music playlists with scheduled automation
-"""
-
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
 from flask_socketio import SocketIO, emit
 import os
@@ -72,7 +66,8 @@ DEFAULT_CONFIG = {
     "TIMEOUT_DOWNLOAD": 1800,
     "MAX_RETRIES": 3,
     "DEBUG_MODE": False,
-    "COOKIES_ENABLED": False
+    "COOKIES_ENABLED": False,
+    "DOWNLOAD_MODE": "both"  # Options: "both", "playlists_only", "albums_only"
 }
 
 # Global state
@@ -1128,6 +1123,7 @@ def download_worker():
             
             playlist_urls = task.get('playlists', [])
             trigger_type = task.get('trigger_type', 'manual')
+            force_mode = task.get('force_mode', None)  # Override download mode
             config = load_config()
             
             # Set running status before creating log file
@@ -1185,7 +1181,17 @@ def download_worker():
                 else:
                     playlist_urls_list.append(url)
             
-            log_message(f"Found {len(album_urls)} album(s) and {len(playlist_urls_list)} playlist(s)", "info")
+            # Filter based on download mode (use force_mode if provided)
+            download_mode = force_mode if force_mode else config.get('DOWNLOAD_MODE', 'both')
+            if download_mode == 'playlists_only':
+                album_urls = []  # Skip albums
+            elif download_mode == 'albums_only':
+                playlist_urls_list = []  # Skip playlists
+            # If 'both', keep both lists as-is
+            
+            mode_source = "forced" if force_mode else "config"
+            log_message(f"Download mode: {download_mode} ({mode_source})", "info")
+            log_message(f"Processing {len(album_urls)} album(s) and {len(playlist_urls_list)} playlist(s)", "info")
             
             # Process albums first
             if album_urls:
@@ -1284,7 +1290,7 @@ def api_config():
         
         # Update configuration
         for key in ['BASE_FOLDER', 'RECORD_FILE_NAME', 
-                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE', 'COOKIES_ENABLED']:
+                    'PARALLEL_LIMIT', 'PLAYLIST_M3U_FOLDER', 'MUSIC_MOUNT_PATH', 'DEBUG_MODE', 'COOKIES_ENABLED', 'DOWNLOAD_MODE']:
             if key in data:
                 config[key] = data[key]
         
@@ -1439,6 +1445,68 @@ def start_download():
     download_queue.put({'playlists': playlists, 'trigger_type': 'manual'})
     
     return jsonify({'success': True, 'message': 'Download started'})
+
+
+@app.route('/api/download/start-albums', methods=['POST'])
+def start_albums_download():
+    """Start download process for albums only"""
+    if download_status["is_running"]:
+        return jsonify({'success': False, 'error': 'Download already in progress'}), 400
+    
+    config = load_config()
+    all_playlists = config.get('PLAYLISTS', [])
+    
+    if not all_playlists:
+        return jsonify({'success': False, 'error': 'No playlists configured'}), 400
+    
+    # Count albums for user feedback
+    album_count = sum(1 for url in all_playlists if is_album_url(url))
+    
+    if album_count == 0:
+        return jsonify({'success': False, 'error': 'No albums found in playlists'}), 400
+    
+    download_status["cancel_requested"] = False
+    download_status["logs"] = []
+    
+    # Pass all playlists but force albums_only mode
+    download_queue.put({
+        'playlists': all_playlists,
+        'trigger_type': 'manual_albums',
+        'force_mode': 'albums_only'
+    })
+    
+    return jsonify({'success': True, 'message': f'Started downloading {album_count} album(s)'})
+
+
+@app.route('/api/download/start-playlists', methods=['POST'])
+def start_playlists_download():
+    """Start download process for playlists only"""
+    if download_status["is_running"]:
+        return jsonify({'success': False, 'error': 'Download already in progress'}), 400
+    
+    config = load_config()
+    all_playlists = config.get('PLAYLISTS', [])
+    
+    if not all_playlists:
+        return jsonify({'success': False, 'error': 'No playlists configured'}), 400
+    
+    # Count playlists (non-albums) for user feedback
+    playlist_count = sum(1 for url in all_playlists if not is_album_url(url))
+    
+    if playlist_count == 0:
+        return jsonify({'success': False, 'error': 'No playlists found (only albums)'}), 400
+    
+    download_status["cancel_requested"] = False
+    download_status["logs"] = []
+    
+    # Pass all playlists but force playlists_only mode
+    download_queue.put({
+        'playlists': all_playlists,
+        'trigger_type': 'manual_playlists',
+        'force_mode': 'playlists_only'
+    })
+    
+    return jsonify({'success': True, 'message': f'Started downloading {playlist_count} playlist(s)'})
 
 
 @app.route('/api/download/cancel', methods=['POST'])

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,6 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
+
 <body>
     <div class="container">
         <!-- Hamburger Menu Button -->
@@ -20,10 +22,10 @@
                 <span></span>
             </div>
         </button>
-        
+
         <!-- Sidebar Overlay -->
         <div class="sidebar-overlay"></div>
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -47,7 +49,8 @@
                     <span class="nav-icon">📜</span>
                     <span>Logs</span>
                 </a>
-                <a href="#debug-logs" class="nav-item" id="debug-logs-nav" onclick="scrollToSection('debug-logs')" style="display: none;">
+                <a href="#debug-logs" class="nav-item" id="debug-logs-nav" onclick="scrollToSection('debug-logs')"
+                    style="display: none;">
                     <span class="nav-icon">🐛</span>
                     <span>Debug Logs</span>
                 </a>
@@ -82,33 +85,28 @@
                         <div class="config-grid">
                             <div class="config-item">
                                 <label for="base_folder">Base Folder</label>
-                                <input type="text" id="base_folder" class="config-input" 
-                                       value="{{ config.BASE_FOLDER }}" 
-                                       placeholder="/data/songs/All Songs">
+                                <input type="text" id="base_folder" class="config-input"
+                                    value="{{ config.BASE_FOLDER }}" placeholder="/data/songs/All Songs">
                             </div>
                             <div class="config-item">
                                 <label for="playlist_m3u_folder">Playlist M3U Folder</label>
-                                <input type="text" id="playlist_m3u_folder" class="config-input" 
-                                       value="{{ config.PLAYLIST_M3U_FOLDER }}" 
-                                       placeholder="/data/songs/Playlists/1">
+                                <input type="text" id="playlist_m3u_folder" class="config-input"
+                                    value="{{ config.PLAYLIST_M3U_FOLDER }}" placeholder="/data/songs/Playlists/1">
                             </div>
                             <div class="config-item">
                                 <label for="music_mount_path">Music Mount Path (For Gonic)</label>
-                                <input type="text" id="music_mount_path" class="config-input" 
-                                       value="{{ config.MUSIC_MOUNT_PATH }}" 
-                                       placeholder="/music">
+                                <input type="text" id="music_mount_path" class="config-input"
+                                    value="{{ config.MUSIC_MOUNT_PATH }}" placeholder="/music">
                             </div>
                             <div class="config-item">
                                 <label for="parallel_limit">Parallel Download Limit</label>
-                                <input type="number" id="parallel_limit" class="config-input" 
-                                       value="{{ config.PARALLEL_LIMIT }}" 
-                                       min="1" max="10">
+                                <input type="number" id="parallel_limit" class="config-input"
+                                    value="{{ config.PARALLEL_LIMIT }}" min="1" max="10">
                             </div>
                             <div class="config-item">
                                 <label for="record_file_name">Record File Name</label>
-                                <input type="text" id="record_file_name" class="config-input" 
-                                       value="{{ config.RECORD_FILE_NAME }}" 
-                                       placeholder=".downloaded_videos.txt">
+                                <input type="text" id="record_file_name" class="config-input"
+                                    value="{{ config.RECORD_FILE_NAME }}" placeholder=".downloaded_videos.txt">
                             </div>
                             <div class="config-item">
                                 <label for="debug_mode">Debug Mode</label>
@@ -117,62 +115,79 @@
                                     <option value="true" {% if config.DEBUG_MODE %}selected{% endif %}>On</option>
                                 </select>
                             </div>
+                            <div class="config-item">
+                                <label for="download_mode">
+                                    Download Options
+                                    <span onclick="showDownloadModeHelp()"
+                                        style="cursor: pointer; margin-left: 0.5rem; color: var(--brand-primary); font-size: 0.875rem;"
+                                        title="Learn more about Download Options">
+                                        <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJpY29uIGljb24tdGFibGVyIGljb25zLXRhYmxlci1vdXRsaW5lIGljb24tdGFibGVyLWhlbHAiPjxwYXRoIHN0cm9rZT0ibm9uZSIgZD0iTTAgMGgyNHYyNEgweiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMiAxMm0tOSAwYTkgOSAwIDEgMCAxOCAwYTkgOSAwIDEgMCAtMTggMCIgLz48cGF0aCBkPSJNMTIgMTdsMCAuMDEiIC8+PHBhdGggZD0iTTEyIDEzLjVhMS41IDEuNSAwIDAgMSAxIC0xLjVhMi42IDIuNiAwIDEgMCAtMyAtNCIgLz48L3N2Zz4="
+                                            alt="Help" style="width: 14px; height: 14px; vertical-align: middle;">
+                                    </span>
+                                </label>
+                                <select id="download_mode" class="config-input">
+                                    <option value="both" {% if config.get('DOWNLOAD_MODE', 'both' )=='both' %}selected{%
+                                        endif %}>Both Albums and Playlists</option>
+                                    <option value="playlists_only" {% if config.get('DOWNLOAD_MODE', 'both'
+                                        )=='playlists_only' %}selected{% endif %}>Only Playlists</option>
+                                    <option value="albums_only" {% if config.get('DOWNLOAD_MODE', 'both'
+                                        )=='albums_only' %}selected{% endif %}>Only Albums</option>
+                                </select>
+                            </div>
                         </div>
-                        
+
                         <!-- Cookies Section -->
                         <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
-                            <h3 style="margin-bottom: 1rem; color: var(--text); font-size: 1.125rem;">🍪 YouTube Cookies (Optional)</h3>
+                            <h3 style="margin-bottom: 1rem; color: var(--text); font-size: 1.125rem;">🍪 YouTube Cookies
+                                (Optional)</h3>
                             <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.875rem;">
-                                Upload a cookies.txt file to access age-restricted or private videos. 
-                                Get cookies using this 
-                                <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" 
-                                   target="_blank" 
-                                   rel="noopener noreferrer"
-                                   style="color: var(--primary); text-decoration: underline;">
+                                Upload a cookies.txt file to access age-restricted or private videos.
+                                Get cookies using this
+                                <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc"
+                                    target="_blank" rel="noopener noreferrer"
+                                    style="color: var(--primary); text-decoration: underline;">
                                     Chrome extension</a>.
                             </p>
-                            <div style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0.25rem;">
+                            <div
+                                style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0.25rem;">
                                 <p style="color: #ffc107; font-size: 0.875rem; margin: 0; font-weight: 500;">
-                                    ⚠️ <strong>Warning:</strong> Excessive use of cookies may result in temporary or permanent account suspension by YouTube. 
-                                    Use cookies in moderation and consider using a throwaway account to avoid risking your main account.
+                                    ⚠️ <strong>Warning:</strong> Excessive use of cookies may result in temporary or
+                                    permanent account suspension by YouTube.
+                                    Use cookies in moderation and consider using a throwaway account to avoid risking
+                                    your main account.
                                 </p>
                             </div>
-                            
+
                             <div id="cookies-status" style="margin-bottom: 1rem;">
                                 <p style="color: var(--text-secondary); font-size: 0.875rem;">
                                     Status: <span id="cookies-status-text">Checking...</span>
                                 </p>
                             </div>
-                            
+
                             <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
                                 <div style="flex: 1; min-width: 200px;">
-                                    <input type="file" 
-                                           id="cookies-file-input" 
-                                           accept=".txt"
-                                           style="display: none;"
-                                           onchange="handleCookiesFileSelect(event)">
-                                    <button onclick="document.getElementById('cookies-file-input').click()" 
-                                            class="btn btn-secondary">
+                                    <input type="file" id="cookies-file-input" accept=".txt" style="display: none;"
+                                        onchange="handleCookiesFileSelect(event)">
+                                    <button onclick="document.getElementById('cookies-file-input').click()"
+                                        class="btn btn-secondary">
                                         📁 Choose cookies.txt
                                     </button>
-                                    <span id="cookies-filename" style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;"></span>
+                                    <span id="cookies-filename"
+                                        style="margin-left: 0.5rem; color: var(--text-secondary); font-size: 0.875rem;"></span>
                                 </div>
-                                <button id="upload-cookies-btn" 
-                                        onclick="uploadCookies()" 
-                                        class="btn btn-primary"
-                                        style="display: none;">
+                                <button id="upload-cookies-btn" onclick="uploadCookies()" class="btn btn-primary"
+                                    style="display: none;">
                                     ⬆️ Upload Cookies
                                 </button>
-                                <button id="delete-cookies-btn" 
-                                        onclick="deleteCookies()" 
-                                        class="btn btn-danger"
-                                        style="display: none;">
+                                <button id="delete-cookies-btn" onclick="deleteCookies()" class="btn btn-danger"
+                                    style="display: none;">
                                     🗑️ Delete Cookies
                                 </button>
                             </div>
                         </div>
-                        
-                        <div style="text-align: right; margin-top: 1.5rem;">                           <button onclick="saveConfig()" class="btn btn-primary">
+
+                        <div style="text-align: right; margin-top: 1.5rem;"> <button onclick="saveConfig()"
+                                class="btn btn-primary">
                                 💾 Save Configuration
                             </button>
                         </div>
@@ -186,21 +201,27 @@
                     </div>
                     <div class="section-content">
                         <div class="add-playlist">
-                            <input type="text" 
-                                   id="new_playlist_url" 
-                                   class="playlist-input" 
-                                   placeholder="Enter YouTube playlist or album URL...">
+                            <input type="text" id="new_playlist_url" class="playlist-input"
+                                placeholder="Enter YouTube playlist or album URL...">
                             <button onclick="addPlaylist()" class="btn btn-primary">
                                 ➕ Add Playlist
                             </button>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 0.5rem 0;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 0.5rem 0;">
                             <p style="margin: 0; color: #666; font-size: 0.875rem;">
                                 <span id="playlist-count">0</span> playlists configured
                             </p>
-                            <button onclick="refreshAllPlaylists()" class="btn btn-secondary btn-sm" id="refresh-all-btn" title="Refresh all playlist metadata">
-                                🔄 Refresh All
-                            </button>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button onclick="runAlbums()" class="btn btn-accent btn-sm" id="run-albums-btn"
+                                    title="Download albums only">
+                                    📀 Run Albums
+                                </button>
+                                <button onclick="refreshAllPlaylists()" class="btn btn-secondary btn-sm"
+                                    id="refresh-all-btn" title="Refresh all playlist metadata">
+                                    🔄 Refresh All
+                                </button>
+                            </div>
                         </div>
                         <div id="playlists-container">
                             <p style="text-align: center; color: #888; padding: 20px;">
@@ -218,11 +239,10 @@
                     <div class="section-content">
                         <div class="download-controls">
                             <button id="start-btn" onclick="startDownload()" class="btn btn-primary btn-large">
-                                🚀 Start Download
-                            </button>
-                            <button id="cancel-btn" onclick="cancelDownload()" class="btn btn-danger btn-large" style="display: none;">
-                                ⛔ Cancel Download
-                            </button>
+                                🚀 Start Download</button>
+                            <button id="cancel-btn" onclick="cancelDownload()" class="btn btn-danger btn-large"
+                                style="display: none;">
+                                ⛔ Cancel Download</button>
                             <div class="download-info">
                                 <p>💡 Downloads will process all configured playlists and albums</p>
                                 <p>📊 Progress and status will be shown below in real-time</p>
@@ -243,7 +263,7 @@
                                 <p>
                                     <strong>Progress:</strong>
                                     <span>
-                                        <span id="progress-current">0</span> / 
+                                        <span id="progress-current">0</span> /
                                         <span id="progress-total">0</span> songs
                                     </span>
                                 </p>
@@ -276,7 +296,8 @@
                         </div>
                         <div id="logs-container" class="logs-container">
                             <div class="log-entry log-info">
-                                <span class="log-timestamp">[{{ status.logs[-1].timestamp if status.logs else 'Ready' }}]</span>
+                                <span class="log-timestamp">[{{ status.logs[-1].timestamp if status.logs else 'Ready'
+                                    }}]</span>
                                 <span class="log-message">System ready. Waiting for download commands...</span>
                             </div>
                         </div>
@@ -290,7 +311,8 @@
                     </div>
                     <div class="section-content">
                         <div class="logs-controls">
-                            <button id="debug-autoscroll-btn" onclick="toggleDebugAutoScroll()" class="btn btn-secondary btn-sm">
+                            <button id="debug-autoscroll-btn" onclick="toggleDebugAutoScroll()"
+                                class="btn btn-secondary btn-sm">
                                 📜 Auto-scroll: ON
                             </button>
                             <button onclick="clearDebugLogs()" class="btn btn-secondary btn-sm">
@@ -336,26 +358,32 @@
                     <div class="section-content">
                         <div class="file-browser-controls">
                             <div class="search-container">
-                                <input type="text" id="file-search-input" class="search-input" placeholder="🔍 Search files and folders...">
-                                <button onclick="clearSearch()" id="clear-search-btn" class="btn btn-secondary btn-sm" style="display: none;">
+                                <input type="text" id="file-search-input" class="search-input"
+                                    placeholder="🔍 Search files and folders...">
+                                <button onclick="clearSearch()" id="clear-search-btn" class="btn btn-secondary btn-sm"
+                                    style="display: none;">
                                     ✖️ Clear
                                 </button>
                             </div>
                             <div class="view-controls">
-                                <button onclick="setViewMode('list')" id="view-list-btn" class="btn btn-secondary btn-sm active">
+                                <button onclick="setViewMode('list')" id="view-list-btn"
+                                    class="btn btn-secondary btn-sm active">
                                     📋 List
                                 </button>
-                                <button onclick="setViewMode('compact')" id="view-compact-btn" class="btn btn-secondary btn-sm">
+                                <button onclick="setViewMode('compact')" id="view-compact-btn"
+                                    class="btn btn-secondary btn-sm">
                                     ☰ Compact
                                 </button>
-                                <button onclick="setViewMode('grid')" id="view-grid-btn" class="btn btn-secondary btn-sm">
+                                <button onclick="setViewMode('grid')" id="view-grid-btn"
+                                    class="btn btn-secondary btn-sm">
                                     ⊞ Grid
                                 </button>
                             </div>
                             <button onclick="refreshFileBrowser()" class="btn btn-primary">
                                 🔄 Refresh
                             </button>
-                            <button onclick="navigateToParent()" id="parent-btn" class="btn btn-secondary" style="display: none;">
+                            <button onclick="navigateToParent()" id="parent-btn" class="btn btn-secondary"
+                                style="display: none;">
                                 ⬆️ Parent Folder
                             </button>
                         </div>
@@ -397,28 +425,28 @@
                                 <div class="cron-schedule-grid">
                                     <div class="config-item">
                                         <label for="cron-minute">Minute</label>
-                                        <input type="text" id="cron-minute" class="config-input" 
-                                               value="0" placeholder="0-59 or *">
+                                        <input type="text" id="cron-minute" class="config-input" value="0"
+                                            placeholder="0-59 or *">
                                     </div>
                                     <div class="config-item">
                                         <label for="cron-hour">Hour</label>
-                                        <input type="text" id="cron-hour" class="config-input" 
-                                               value="2" placeholder="0-23 or *">
+                                        <input type="text" id="cron-hour" class="config-input" value="2"
+                                            placeholder="0-23 or *">
                                     </div>
                                     <div class="config-item">
                                         <label for="cron-day">Day</label>
-                                        <input type="text" id="cron-day" class="config-input" 
-                                               value="*" placeholder="1-31 or *">
+                                        <input type="text" id="cron-day" class="config-input" value="*"
+                                            placeholder="1-31 or *">
                                     </div>
                                     <div class="config-item">
                                         <label for="cron-month">Month</label>
-                                        <input type="text" id="cron-month" class="config-input" 
-                                               value="*" placeholder="1-12 or *">
+                                        <input type="text" id="cron-month" class="config-input" value="*"
+                                            placeholder="1-12 or *">
                                     </div>
                                     <div class="config-item">
                                         <label for="cron-day-of-week">Day of Week</label>
-                                        <input type="text" id="cron-day-of-week" class="config-input" 
-                                               value="*" placeholder="0-6 or *">
+                                        <input type="text" id="cron-day-of-week" class="config-input" value="*"
+                                            placeholder="0-6 or *">
                                     </div>
                                 </div>
 
@@ -454,15 +482,17 @@
             <footer>
                 <p class="footer-brand">Synthwave &copy; 2025</p>
                 <p class="footer-attribution">
-                    Made with ❤️ by 
+                    Made with ❤️ by
                     <a href="https://github.com/PranavVerma-droid" target="_blank" rel="noopener noreferrer">
                         PranavVerma-droid
                     </a>
                 </p>
                 <p>
                     <a href="https://github.com/PranavVerma-droid/Synthwave" target="_blank" rel="noopener noreferrer">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle;">
-                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"
+                            style="vertical-align: middle;">
+                            <path
+                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
                         </svg>
                         View on GitHub
                     </a>
@@ -536,6 +566,53 @@
         </div>
     </div>
 
+    <!-- Download Mode Help Modal -->
+    <div id="download-mode-help-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📥 Download Options Explained</h3>
+                <button onclick="closeDownloadModeHelp()" class="btn btn-secondary btn-sm">
+                    ✖️ Close
+                </button>
+            </div>
+            <div style="padding: 1rem; color: var(--text-secondary); line-height: 1.6;">
+                <p style="margin-bottom: 1rem;"><strong>Why this feature exists:</strong></p>
+                <p style="margin-bottom: 1rem;">
+                    Albums are static content that rarely change once published. Scanning them repeatedly during
+                    automated runs wastes resources.
+                    This option lets you optimize your workflow by focusing on playlists (which change frequently)
+                    during regular syncs.
+                </p>
+
+                <p style="margin-bottom: 1rem; margin-top: 1.5rem;"><strong>How it works:</strong></p>
+                <ul style="margin-bottom: 1rem; padding-left: 1.5rem;">
+                    <li style="margin-bottom: 0.5rem;"><strong>Both Albums and Playlists:</strong> Default mode.
+                        Downloads everything normally.</li>
+                    <li style="margin-bottom: 0.5rem;"><strong>Only Playlists:</strong> Skips albums during
+                        automated/manual runs. A "📀 Run Albums" button appears in the Playlist Management section for
+                        when you add new albums.</li>
+                    <li style="margin-bottom: 0.5rem;"><strong>Only Albums:</strong> Skips playlists during runs. A "🎵
+                        Run Playlists" button appears for manual playlist syncing.</li>
+                </ul>
+
+                <p style="margin-bottom: 1rem; margin-top: 1.5rem;"><strong>Smart button behavior:</strong></p>
+                <ul style="margin-bottom: 1rem; padding-left: 1.5rem;">
+                    <li style="margin-bottom: 0.5rem;">When set to "Both" → No special button (everything runs together)
+                    </li>
+                    <li style="margin-bottom: 0.5rem;">When set to "Only Playlists" → "📀 Run Albums" button appears
+                    </li>
+                    <li style="margin-bottom: 0.5rem;">When set to "Only Albums" → "🎵 Run Playlists" button appears
+                    </li>
+                </ul>
+
+                <p style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <strong>💡 Recommended setup:</strong> Set to "Only Playlists" for automated cron jobs, and use "Run
+                    Albums" button manually when you add new albums.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
         // Smooth scroll navigation
@@ -543,7 +620,7 @@
             const element = document.getElementById(id);
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                
+
                 // Update active nav item
                 document.querySelectorAll('.nav-item').forEach(item => {
                     item.classList.remove('active');
@@ -553,4 +630,5 @@
         }
     </script>
 </body>
+
 </html>

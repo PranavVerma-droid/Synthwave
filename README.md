@@ -84,6 +84,7 @@ The application configuration is stored in `config/config.yaml` and can be edite
 | **TIMEOUT_DOWNLOAD** | Timeout in seconds for downloading individual songs | `1800` | `900` |
 | **MAX_RETRIES** | Number of retry attempts for failed downloads or metadata fetches | `3` | `5` |
 | **DEBUG_MODE** | Enable verbose logging for troubleshooting | `false` | `true` |
+| **DOWNLOAD_MODE** | Control what content to download: `both` (albums + playlists), `playlists_only` (skip albums), or `albums_only` (skip playlists). Optimizes automated runs by avoiding redundant album scans. | `both` | `playlists_only` |
 | **CRON_ENABLED** | Enable scheduled automatic downloads | `false` | `true` |
 | **CRON_SCHEDULE** | Cron expression for scheduled downloads | `{"minute": "0", "hour": "2", ...}` | See below |
 

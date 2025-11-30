@@ -30,6 +30,14 @@ document.addEventListener('DOMContentLoaded', function() {
         debugModeSelect.addEventListener('change', previewDebugMode);
     }
     
+    // Attach download mode change listener
+    const downloadModeSelect = document.getElementById('download_mode');
+    if (downloadModeSelect) {
+        downloadModeSelect.addEventListener('change', function() {
+            updateDownloadModeUI(this.value);
+        });
+    }
+    
     // Attach search listener
     const searchInput = document.getElementById('file-search-input');
     if (searchInput) {
@@ -135,6 +143,7 @@ async function loadConfig() {
         
         debugMode = data.config.DEBUG_MODE || false;
         updateDebugUI();
+        updateDownloadModeUI(data.config.DOWNLOAD_MODE || 'both');
         
         // Load cookies status
         loadCookiesStatus();
@@ -150,7 +159,8 @@ async function saveConfig() {
         MUSIC_MOUNT_PATH: document.getElementById('music_mount_path').value,
         PARALLEL_LIMIT: parseInt(document.getElementById('parallel_limit').value),
         RECORD_FILE_NAME: document.getElementById('record_file_name').value,
-        DEBUG_MODE: document.getElementById('debug_mode').value === 'true'
+        DEBUG_MODE: document.getElementById('debug_mode').value === 'true',
+        DOWNLOAD_MODE: document.getElementById('download_mode').value
     };
 
     try {
@@ -167,6 +177,7 @@ async function saveConfig() {
         if (result.success) {
             debugMode = document.getElementById('debug_mode').value === 'true';
             updateDebugUI();
+            updateDownloadModeUI(document.getElementById('download_mode').value);
             showNotification('Configuration saved successfully!', 'success');
         } else {
             showNotification('Failed to save configuration', 'error');
@@ -560,6 +571,86 @@ async function startDownload() {
     }
 }
 
+async function runAlbums() {
+    const runAlbumsBtn = document.getElementById('run-albums-btn');
+    const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
+    if (!confirm('This will download only the albums from your playlists. Continue?')) {
+        return;
+    }
+    
+    runAlbumsBtn.disabled = true;
+    runAlbumsBtn.textContent = '⏳ Starting...';
+
+    try {
+        const response = await fetch('/api/download/start-albums', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('progress-section').style.display = 'block';
+            startBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-flex';
+            showNotification(result.message || 'Album download started!', 'success');
+        } else {
+            showNotification(result.error || 'Failed to start album download', 'error');
+        }
+    } catch (error) {
+        console.error('Error starting album download:', error);
+        showNotification('Error starting album download', 'error');
+    } finally {
+        runAlbumsBtn.disabled = false;
+        runAlbumsBtn.textContent = '📀 Run Albums';
+    }
+}
+
+async function runPlaylists() {
+    const runPlaylistsBtn = document.getElementById('run-albums-btn'); // Same button, different mode
+    const startBtn = document.getElementById('start-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
+    if (!confirm('This will download only the playlists (non-album tracks). Continue?')) {
+        return;
+    }
+    
+    runPlaylistsBtn.disabled = true;
+    runPlaylistsBtn.textContent = '⏳ Starting...';
+
+    try {
+        const response = await fetch('/api/download/start-playlists', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('progress-section').style.display = 'block';
+            startBtn.style.display = 'none';
+            cancelBtn.style.display = 'inline-flex';
+            showNotification(result.message || 'Playlist download started!', 'success');
+        } else {
+            showNotification(result.error || 'Failed to start playlist download', 'error');
+        }
+    } catch (error) {
+        console.error('Error starting playlist download:', error);
+        showNotification('Error starting playlist download', 'error');
+    } finally {
+        runPlaylistsBtn.disabled = false;
+        runPlaylistsBtn.textContent = '🎵 Run Playlists';
+    }
+}
+
 async function cancelDownload() {
     const cancelBtn = document.getElementById('cancel-btn');
     const startBtn = document.getElementById('start-btn');
@@ -735,6 +826,30 @@ function updateDebugUI() {
     } else {
         debugSection.style.display = 'none';
         debugNav.style.display = 'none';
+    }
+}
+
+function updateDownloadModeUI(mode) {
+    const runAlbumsBtn = document.getElementById('run-albums-btn');
+    
+    if (!runAlbumsBtn) return;
+    
+    switch(mode) {
+        case 'both':
+            runAlbumsBtn.style.display = 'none';
+            break;
+        case 'playlists_only':
+            runAlbumsBtn.style.display = 'inline-flex';
+            runAlbumsBtn.textContent = '📀 Run Albums';
+            runAlbumsBtn.title = 'Download albums only';
+            runAlbumsBtn.onclick = runAlbums;
+            break;
+        case 'albums_only':
+            runAlbumsBtn.style.display = 'inline-flex';
+            runAlbumsBtn.textContent = '🎵 Run Playlists';
+            runAlbumsBtn.title = 'Download playlists only';
+            runAlbumsBtn.onclick = runPlaylists;
+            break;
     }
 }
 
@@ -1171,6 +1286,28 @@ document.getElementById('new_playlist_url')?.addEventListener('keypress', functi
 document.getElementById('cron-modal')?.addEventListener('click', function(e) {
     if (e.target === this) {
         closeCronModal();
+    }
+});
+
+// Download Mode Help Modal Functions
+function showDownloadModeHelp() {
+    const modal = document.getElementById('download-mode-help-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function closeDownloadModeHelp() {
+    const modal = document.getElementById('download-mode-help-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Close download mode help modal when clicking outside
+document.getElementById('download-mode-help-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeDownloadModeHelp();
     }
 });
 
