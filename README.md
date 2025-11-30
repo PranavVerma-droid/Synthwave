@@ -1,8 +1,39 @@
-# Synthwave 🎵
+<div align="center">
+  <img src="static/logo/logo.jpg" alt="Synthwave Logo" width="300" style="border-radius: 15px;"/>
+  
+  # Synthwave
+  
+  A self-hosted YouTube Music playlist downloader with a modern web interface, automated scheduling, and Docker support. Download and organize your music playlists with metadata, album artwork, and automatic M3U playlist generation.
 
-A self-hosted YouTube Music playlist downloader with a modern web interface, automated scheduling, and Docker support. Download and organize your music playlists with metadata, album artwork, and automatic M3U playlist generation.
+  Designed to work around [Gonic](https://github.com/sentriz/gonic) (A Subsonic Compatible Music Streaming Server).
+  
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/PranavVerma-droid/Synthwave/docker-build.yml)
+  ![GitHub commits since latest release](https://img.shields.io/github/commits-since/PranavVerma-droid/Synthwave/latest)
+</div>
 
-Designed to work around [Gonic](https://github.com/sentriz/gonic) (A Subsonic Compatable Music Streaming Server).
+---
+
+## 📸 Screenshots
+
+<div align="center">
+  <img src="static/images/1.png" alt="Dashboard View" width="800"/>
+  <p><em>Main Dashboard - Configuration & Download Management</em></p>
+  
+  <img src="static/images/2.png" alt="Playlist Management" width="800"/>
+  <p><em>Playlist Management with Preview Cards</em></p>
+  
+  <img src="static/images/3.png" alt="Download Progress" width="800"/>
+  <p><em>Real-time Download Progress & Logs</em></p>
+  
+  <img src="static/images/4.png" alt="File Browser" width="800"/>
+  <p><em>Integrated File Browser with Audio Playback</em></p>
+  
+  <img src="static/images/5.png" alt="Automation Settings" width="800"/>
+  <p><em>Automated Scheduling with Cron Jobs</em></p>
+</div>
+
+---
 
 ## 🚀 Quick Start
 
