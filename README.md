@@ -37,7 +37,7 @@
 
 ## 🚀 Quick Start
 
-### Using Docker Compose: Production (Recommended)
+### Using Docker Compose 🐋
 
 ```bash
 git clone https://github.com/PranavVerma-droid/Synthwave.git
@@ -45,42 +45,42 @@ cd Synthwave/docker
 cp .env.example .env
 
 docker compose up -d
+
+# OR, if you want, you can run the latest nightly build (latest commit):
+# docker compose -f docker-compose-dev.yml up --build -d
+
+# Then, Visit:
+# http://your-server-url:5000
 ```
 
-Then visit:
-```
-http://your-server-url:5000
-```
-
-### Using Docker Compose: Development Local Test
+### Manual Deployment 💪
 ```bash
-git clone https://github.com/PranavVerma-droid/Synthwave.git
-cd Synthwave/docker
-cp .env.example .env
-
-docker compose -f docker-compose-dev.yml up --build -d
-```
-
-Then visit:
-```
-http://your-server-url:5000
-```
-
-### Manual Installation
-
-```bash
-# Dependencies
-sudo apt-get install nodejs npm ffmpeg imagemagick findutils python3 python3-pip
-
-# Clone the repository
 git clone https://github.com/PranavVerma-droid/Synthwave.git
 cd Synthwave
 
-# Install dependencies
+# Dependencies:
+sudo apt-get update && sudo apt-get install -y \
+    ffmpeg \
+    libavcodec-extra \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
+    imagemagick \
+    findutils \
+    curl \
+    nodejs \
+    npm
+
 pip install -r requirements.txt
 
-# Run the application
-python app.py
+# Then, Start the App:
+python3 app.py
+
+# Then visit:
+# http://your-server-url:5000
+
 ```
 
 ## 📋 Usage
@@ -95,7 +95,6 @@ python app.py
 
 - YouTube Playlists: `https://www.youtube.com/playlist?list=...`
 - YouTube Albums: `https://music.youtube.com/playlist?list=OLAK5uy_...`
-- Individual Videos: `https://www.youtube.com/watch?v=...`
 
 
 ## ⚙️ Configuration
@@ -117,7 +116,7 @@ The application configuration is stored in `config/config.yaml` and can be edite
 | **DEBUG_MODE** | Enable verbose logging for troubleshooting | `false` | `true` |
 | **DOWNLOAD_MODE** | Control what content to download: `both` (albums + playlists), `playlists_only` (skip albums), or `albums_only` (skip playlists). Optimizes automated runs by avoiding redundant album scans. | `both` | `playlists_only` |
 | **CRON_ENABLED** | Enable scheduled automatic downloads | `false` | `true` |
-| **CRON_SCHEDULE** | Cron expression for scheduled downloads | `{"minute": "0", "hour": "2", ...}` | See below |
+| **CRON_SCHEDULE** | Cron expression for scheduled downloads | `{"minute": "0", "hour": "2", ...}` | `{"minute": "0", "hour": "2", ...}` |
 
 ## Schema
 - The Config For this app is created in the `config/config.yaml` file AFTER the first run.
