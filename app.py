@@ -360,22 +360,81 @@ def get_playlist_preview(url, force_refresh=False):
 def load_logs_info():
     """Load logs info from JSON file"""
     if LOGS_INFO_FILE.exists():
-        try:
-            with open(LOGS_INFO_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading logs info: {str(e)}")
-            return {"logs": []}
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with open(LOGS_INFO_FILE, 'r') as f:
+                    # Acquire shared lock for reading
+                    fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                    try:
+                        data = json.load(f)
+                        return data
+                    finally:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parse error in logs info file (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                    continue
+                else:
+                    logger.error("Failed to load logs info after retries, using defaults")
+                    return {"logs": []}
+            except Exception as e:
+                logger.error(f"Error loading logs info (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(0.1)
+                    continue
+                else:
+                    logger.error("Failed to load logs info after retries, using defaults")
+                    return {"logs": []}
     return {"logs": []}
 
 
 def save_logs_info(logs_info):
-    """Save logs info to JSON file"""
-    try:
-        with open(LOGS_INFO_FILE, 'w') as f:
-            json.dump(logs_info, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving logs info: {str(e)}")
+    """Save logs info to JSON file using atomic write"""
+    max_retries = 5
+    retry_delay = 0.1
+    
+    for attempt in range(max_retries):
+        try:
+            # Write to temporary file first (in same directory to avoid cross-device issues)
+            temp_fd, temp_path = tempfile.mkstemp(dir=LOGS_DIR, prefix='.logs_info_', suffix='.json.tmp')
+            try:
+                with os.fdopen(temp_fd, 'w') as f:
+                    # Acquire exclusive lock for writing
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    try:
+                        json.dump(logs_info, f, indent=2)
+                    finally:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                
+                # Use rename with retry for cross-device scenarios
+                try:
+                    os.replace(temp_path, LOGS_INFO_FILE)
+                    logger.debug("Logs info saved successfully")
+                    return  # Success!
+                except OSError as e:
+                    if e.errno == 16:  # Device busy
+                        if attempt < max_retries - 1:
+                            time.sleep(retry_delay * (attempt + 1))
+                            continue
+                    raise
+            except Exception as e:
+                # Clean up temp file on error
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+                raise
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Save logs info attempt {attempt + 1} failed: {str(e)}")
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            else:
+                logger.error(f"Failed to save logs info after {max_retries} attempts: {str(e)}")
+                raise
 
 
 def create_log_file(trigger_type="manual"):
