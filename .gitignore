@@ -1,4 +1,6 @@
 config/
 logs/
 venv/
+.venv/
+dev/
 docker/.env
